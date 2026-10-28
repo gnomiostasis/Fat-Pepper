@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { drawDog } from './dog';
+import { drawDog, drawDogPaw, drawDogTail } from './dog';
 import { ITEMS } from './items';
 import { PAL, darken, lighten } from './palette';
 import { Pen } from './pen';
@@ -16,6 +16,11 @@ const FLOOR_TILE_PX = 256;
 
 export const dogKey = (step: number) => `dog-${step}`;
 export const itemKey = (id: string) => `item-${id}`;
+/** Where the tail texture's hinge sits, as a fraction of the texture size. */
+export const TAIL_ORIGIN = { x: 10 / 30, y: 6 / 30 };
+/** The comic words that pop up when Pepper takes a big bite. */
+export const CHOMP_WORDS = ['CHOMP!', 'NOM!', 'GULP!', 'MUNCH!'];
+export const chompKey = (i: number) => `chomp-${i}`;
 
 function canvas(w: number, h: number) {
   const c = document.createElement('canvas');
@@ -35,6 +40,16 @@ export function makeTextures(scene: Phaser.Scene) {
     const L = 120, { c, ctx } = canvas(L * DOG_K, L * DOG_K);
     drawDog(new Pen(ctx, DOG_K, c.width / 2, c.height / 2), i / (DOG_FAT_STEPS - 1));
     tex.addCanvas(dogKey(i), c);
+  }
+  {
+    const { c, ctx } = canvas(12 * DOG_K, 12 * DOG_K);
+    drawDogPaw(new Pen(ctx, DOG_K, c.width / 2, c.height / 2));
+    tex.addCanvas('dog-paw', c);
+  }
+  {
+    const { c, ctx } = canvas(30 * DOG_K, 30 * DOG_K);
+    drawDogTail(new Pen(ctx, DOG_K, c.width * TAIL_ORIGIN.x, c.height * TAIL_ORIGIN.y));
+    tex.addCanvas('dog-tail', c);
   }
 
   for (const d of ITEMS) {
@@ -112,6 +127,22 @@ function overlayTextures(scene: Phaser.Scene) {
     ctx.fillStyle = v; ctx.fillRect(0, 0, N, N);
     scene.textures.addCanvas('vignette', c);
   }
+  // Comic starbursts for big bites
+  CHOMP_WORDS.forEach((word, i) => {
+    const W = 260, H = 170, { c, ctx } = canvas(W, H), n = 14;
+    ctx.beginPath();
+    for (let j = 0; j <= n * 2; j++) {
+      const a = (j / (n * 2)) * Math.PI * 2, rr = j % 2 ? 0.72 : 1;
+      const x = W / 2 + Math.cos(a) * (W / 2 - 8) * rr, y = H / 2 + Math.sin(a) * (H / 2 - 8) * rr;
+      if (j === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.save(); ctx.translate(6, -4); ctx.fillStyle = PAL.yellow; ctx.fill(); ctx.restore();
+    ctx.lineWidth = 6; ctx.lineJoin = 'round'; ctx.strokeStyle = PAL.ink; ctx.stroke();
+    ctx.font = '400 46px "Lilita One", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.lineWidth = 8; ctx.strokeStyle = PAL.ink; ctx.strokeText(word, W / 2, H / 2 + 2);
+    ctx.fillStyle = PAL.orange; ctx.fillText(word, W / 2, H / 2 + 2);
+    scene.textures.addCanvas(chompKey(i), c);
+  });
   // Small round particle for chomp crumbs
   {
     const { c, ctx } = canvas(16, 16);

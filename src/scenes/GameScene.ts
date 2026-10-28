@@ -1,8 +1,8 @@
 import Phaser from 'phaser';
-import { DOG_BODY_RX } from '../art/dog';
+import { DOG_BODY_RX, dogRig } from '../art/dog';
 import { ITEM_BY_ID, ItemDef } from '../art/items';
 import { PAL, hexNum } from '../art/palette';
-import { DOG_FAT_STEPS, DOG_K, FLOOR_TILE_WORLD, ITEM_K, dogKey, itemKey } from '../art/textures';
+import { CHOMP_WORDS, DOG_FAT_STEPS, DOG_K, FLOOR_TILE_WORLD, ITEM_K, TAIL_ORIGIN, chompKey, dogKey, itemKey } from '../art/textures';
 import { Box, HouseLayout, PILES, SCATTER, buildHouse } from '../game/house';
 import { DOOR_R, START_R, canEat, fatFor, formatSize, grownRadius, speedFor, zoomFor } from '../game/tuning';
 import { EV } from './events';
@@ -31,7 +31,10 @@ export class GameScene extends Phaser.Scene {
   private doorFlap!: Box;
   private flap!: Phaser.GameObjects.Graphics;
   private arrow!: Phaser.GameObjects.Graphics;
-  private dog!: Phaser.GameObjects.Image;
+  private dog!: Phaser.GameObjects.Container;
+  private dogBody!: Phaser.GameObjects.Image;
+  private dogPaws: Phaser.GameObjects.Image[] = [];
+  private dogTail!: Phaser.GameObjects.Image;
   private dogShadow!: Phaser.GameObjects.Image;
   private keys!: Record<'up' | 'down' | 'left' | 'right' | 'w' | 'a' | 's' | 'd', Phaser.Input.Keyboard.Key>;
 
@@ -44,6 +47,11 @@ export class GameScene extends Phaser.Scene {
   private heading = -Math.PI / 2;
   private walkPhase = 0;
   private chomp = 0;
+  /** Seconds into the current bite lunge, or -1 when not biting. */
+  private biteT = -1;
+  /** Extra tail wagging right after a snack; fades out. */
+  private happy = 0;
+  private lastPop = 0;
   private dogStep = -1;
   private started = false;
   private finished = false;
@@ -60,6 +68,7 @@ export class GameScene extends Phaser.Scene {
     this.things = []; this.solids = [];
     this.r = this.shownR = START_R;
     this.vx = this.vy = 0; this.heading = -Math.PI / 2; this.walkPhase = 0; this.chomp = 0; this.dogStep = -1;
+    this.biteT = -1; this.happy = 0; this.lastPop = 0;
     this.started = false; this.finished = false; this.eatenCount = 0; this.tooSmallUntil = 0;
 
     this.house = buildHouse();
@@ -78,7 +87,12 @@ export class GameScene extends Phaser.Scene {
     this.scatterItems();
 
     this.dogShadow = this.add.image(this.x, this.y, dogKey(0)).setTintFill(0x000000).setAlpha(SHADOW_ALPHA).setDepth(9);
-    this.dog = this.add.image(this.x, this.y, dogKey(0)).setDepth(10);
+    // Pepper is built from parts so her legs and tail can move. The container works in
+    // the art's local units; each part's texture has DOG_K pixels per unit.
+    this.dogTail = this.add.image(0, 0, 'dog-tail').setOrigin(TAIL_ORIGIN.x, TAIL_ORIGIN.y).setScale(1 / DOG_K);
+    this.dogPaws = [0, 1, 2, 3].map(() => this.add.image(0, 0, 'dog-paw').setScale(1 / DOG_K));
+    this.dogBody = this.add.image(0, 0, dogKey(0)).setScale(1 / DOG_K);
+    this.dog = this.add.container(this.x, this.y, [this.dogTail, ...this.dogPaws, this.dogBody]).setDepth(10);
     this.arrow = this.add.graphics().setDepth(20);
     this.renderDog(0);
 
@@ -312,6 +326,8 @@ export class GameScene extends Phaser.Scene {
     this.r = grownRadius(this.r, t.def.size);
     this.eatenCount++;
     this.chomp = 1;
+    this.biteT = 0;
+    this.happy = 1;
 
     t.shadow.destroy();
     const mouthX = this.x + Math.cos(this.heading) * this.r * 1.6, mouthY = this.y + Math.sin(this.heading) * this.r * 1.6;
@@ -321,11 +337,42 @@ export class GameScene extends Phaser.Scene {
       onComplete: () => t.sprite.destroy(),
     });
 
+    this.crumbBurst(mouthX, mouthY, before);
+    if (t.def.size >= before * 0.7) this.chompPop(mouthX, mouthY, before);
+
     this.game.events.emit(EV.eat, t.def.name);
     this.game.events.emit(EV.size, this.r);
     if (before < DOOR_R && this.r >= DOOR_R) {
       this.game.events.emit(EV.toast, 'Big enough! Jump out the dog door in the kitchen.');
     }
+  }
+
+  /** A little spray of crumbs from Pepper's mouth. */
+  private crumbBurst(x: number, y: number, r: number) {
+    const colors = [PAL.bread, PAL.cream, PAL.mustard, PAL.white];
+    const n = 5 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < n; i++) {
+      const a = this.heading + Math.PI + (Math.random() - 0.5) * 2.6;
+      const dist = r * (0.6 + Math.random() * 0.9), size = (r * (0.12 + Math.random() * 0.1)) / 16;
+      const dot = this.add.image(x, y, 'dot').setTint(hexNum(colors[i % colors.length])).setScale(size).setDepth(12);
+      this.tweens.add({
+        targets: dot, x: x + Math.cos(a) * dist, y: y + Math.sin(a) * dist, scale: size * 0.3, alpha: 0,
+        duration: 260 + Math.random() * 160, ease: 'Quad.easeOut', onComplete: () => dot.destroy(),
+      });
+    }
+  }
+
+  /** A comic-book starburst for a big bite. */
+  private chompPop(x: number, y: number, r: number) {
+    if (this.time.now - this.lastPop < 450) return;
+    this.lastPop = this.time.now;
+    const side = Math.random() < 0.5 ? -1 : 1, a = this.heading + side * 1.2;
+    const px = x + Math.cos(a) * r * 1.4, py = y + Math.sin(a) * r * 1.4;
+    const word = Math.floor(Math.random() * CHOMP_WORDS.length);
+    const scale = (r * 3.4) / 260;
+    const pop = this.add.image(px, py, chompKey(word)).setScale(0).setDepth(30).setRotation(side * 0.2);
+    this.tweens.add({ targets: pop, scale, duration: 160, ease: 'Back.easeOut' });
+    this.tweens.add({ targets: pop, alpha: 0, scale: scale * 1.15, delay: 420, duration: 220, onComplete: () => pop.destroy() });
   }
 
   private wobble(t: Thing) {
@@ -364,19 +411,42 @@ export class GameScene extends Phaser.Scene {
     if (step !== this.dogStep) {
       if (this.dogStep >= 0 && dt > 0) this.chomp = Math.max(this.chomp, 0.8);
       this.dogStep = step;
-      this.dog.setTexture(dogKey(step));
+      this.dogBody.setTexture(dogKey(step));
       this.dogShadow.setTexture(dogKey(step));
     }
     const fq = step / (DOG_FAT_STEPS - 1);
-    const s = this.shownR / (DOG_BODY_RX * (1 + fq)) / DOG_K;
+    const unit = this.shownR / (DOG_BODY_RX * (1 + fq));
     const v = Math.hypot(this.vx, this.vy), moving = Math.min(1, v / speedFor(this.r));
-    const waddle = Math.sin(this.walkPhase) * 0.08 * moving;
+    const waddle = Math.sin(this.walkPhase) * 0.05 * moving;
     const squash = this.chomp * 0.14;
     const rot = this.heading + Math.PI / 2 + waddle;
 
-    this.dog.setPosition(this.x, this.y).setRotation(rot).setScale(s * (1 + squash), s * (1 - squash * 0.6));
-    const off = this.shownR * 0.16;
-    this.dogShadow.setPosition(this.x + off, this.y + off * 1.3).setRotation(rot).setScale(s * (1 + squash), s * (1 - squash * 0.6));
+    // Bite lunge: a quick hop forward and back.
+    let lunge = 0;
+    if (this.biteT >= 0) {
+      this.biteT += dt;
+      const t = this.biteT / 0.2;
+      if (t >= 1) this.biteT = -1; else lunge = Math.sin(t * Math.PI) * this.shownR * 0.3;
+    }
+    const x = this.x + Math.cos(this.heading) * lunge, y = this.y + Math.sin(this.heading) * lunge;
+
+    // Trot: diagonal paws move together, lifting a little as they swing forward.
+    const rig = dogRig(fq), gait = this.walkPhase * 0.6, stride = 4.5 * moving;
+    rig.paws.forEach((p, i) => {
+      const phase = i === 0 || i === 3 ? 0 : Math.PI;
+      const swing = Math.sin(gait + phase), lift = Math.max(0, -Math.cos(gait + phase)) * moving;
+      this.dogPaws[i].setPosition(p.x, p.y + swing * stride).setScale((1 + lift * 0.22) / DOG_K);
+    });
+
+    // Tail: wags with each step, a happy idle wag, and extra wagging after a snack.
+    this.happy *= Math.exp(-dt * 1.5);
+    const now = this.time.now / 1000;
+    const wag = Math.sin(gait * 2) * 0.45 * moving + Math.sin(now * 7) * (0.22 + this.happy * 0.4) * (1 - moving * 0.6);
+    this.dogTail.setPosition(rig.tail.x, rig.tail.y).setRotation(wag - 0.15);
+
+    this.dog.setPosition(x, y).setRotation(rot).setScale(unit * (1 + squash), unit * (1 - squash * 0.6));
+    const off = this.shownR * 0.16, s = unit / DOG_K;
+    this.dogShadow.setPosition(x + off, y + off * 1.3).setRotation(rot).setScale(s * (1 + squash), s * (1 - squash * 0.6));
   }
 
   /** Once Pepper is big enough, a little arrow points her toward the dog door. */
