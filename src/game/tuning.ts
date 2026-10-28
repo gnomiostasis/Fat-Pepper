@@ -14,7 +14,7 @@ export const canEat = (r: number, size: number) => size <= r * EAT_RATIO;
 export const grownRadius = (r: number, size: number) => Math.sqrt(r * r + GROW_K * (size / 2) ** 2);
 
 /** Top speed in cm/s; grows with Pepper so she feels about as quick on screen at every size. */
-export const speedFor = (r: number) => 150 * Math.pow(r / START_R, 0.85);
+export const speedFor = (r: number) => 95 * Math.pow(r / START_R, 0.85);
 
 /** 0 = skinny puppy, approaching 1 as she gets enormous. Rises quickly early so the chub shows. */
 export const fatFor = (r: number) => Math.min(1, Math.max(0, 1 - Math.exp(-Math.log(r / START_R) * 0.55)));
