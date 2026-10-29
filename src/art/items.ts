@@ -138,6 +138,14 @@ export const ITEMS: ItemDef[] = [
     for (const x of [-10, 10]) g.line([[x, -11], [x, 11]], PAL.wood, 1.2);
   } },
 
+  { id: 'duck', name: 'rubber duck', size: 9, w: 22, h: 20, draw(g) {
+    g.fill(ell(-1, 2, 9, 7), PAL.yellow); g.fill(circ(5, -4, 5), PAL.yellow);
+    g.fill(ell(10, -3, 3, 1.6), PAL.orange); g.fill(circ(6, -5.5, 0.9), I, { plain: true });
+  } },
+  { id: 'toiletpaper', name: 'toilet paper', size: 12, w: 22, h: 22, draw(g) {
+    g.fill(circ(0, 0, 10), PAL.white); g.fill(circ(0, 0, 3.5), PAL.woodLight);
+    g.line(circ(0, 0, 7), PAL.greyLight, 0.6, true);
+  } },
   { id: 'box', name: 'cardboard box', size: 34, w: 30, h: 30, draw(g) {
     g.fill(rect(-13, -13, 26, 26), PAL.woodLight);
     g.fill(rect(-13, -2, 26, 4), PAL.paper, { plain: true });
@@ -213,6 +221,22 @@ export const ITEMS: ItemDef[] = [
     g.fill(rect(-16, -5.5, 32, 11), PAL.woodDark);
     g.fill(rect(-12, -3.5, 8, 5), PAL.collar); g.fill(rect(-11, -2.5, 6, 1), PAL.ink, { plain: true });
     g.fill(rect(4, -2, 5, 4), PAL.grey); g.line([[11, -3], [14, 2]], PAL.greyLight, 0.8);
+  } },
+  { id: 'toilet', name: 'toilet', size: 70, w: 21, h: 30, furniture: true, draw(g) {
+    g.fill(rrect(-10, -15, 20, 9, 2), PAL.white);
+    g.fill(ell(0, 4, 9, 11), PAL.white); g.fill(ell(0, 5, 5.5, 7.5), PAL.sky);
+    g.fill(rect(-3, -12.5, 6, 2), PAL.greyLight, { plain: true });
+  } },
+  { id: 'bathtub', name: 'bathtub', size: 140, w: 32, h: 15, furniture: true, draw(g) {
+    g.fill(rrect(-16, -7.5, 32, 15, 3), PAL.pink);
+    g.fill(rrect(-13.5, -5, 27, 10, 4), PAL.white);
+    g.fill(rrect(-12, -3.6, 24, 7.2, 3.4), PAL.sky, { plain: true });
+    g.fill(circ(11.5, 0, 1), PAL.greyLight); g.fill(circ(-8, -1, 1.6), PAL.white, { plain: true });
+  } },
+  { id: 'sink', name: 'bathroom sink', size: 90, w: 32, h: 18, furniture: true, draw(g) {
+    g.fill(rect(-16, -9, 32, 18), PAL.pink);
+    g.fill(ell(0, 1, 7.5, 5.5), PAL.white); g.fill(ell(0, 1.5, 5, 3.5), PAL.sky, { plain: true });
+    g.fill(rect(-1, -7, 2, 4), PAL.greyLight); g.fill(rect(9, -5, 5, 7), PAL.mustard);
   } },
   { id: 'dogbed', name: "Pepper's bed", size: 80, w: 30, h: 30, furniture: true, draw(g) {
     g.fill(circ(0, 0, 14), PAL.orange); g.fill(circ(0, 0, 10), PAL.cream);

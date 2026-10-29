@@ -66,9 +66,11 @@ export function buildHouse(): HouseLayout {
     // Living room / garage, and the living room's bottom wall with the pantry door
     ...chain([978, 243], [978, 560], [935, 560]),
     ...chain([862, 560], [715, 560]),
-    // Office: angled corner with its door, then down to the entry opening
+    // Bathroom: angled corner with its door, then down past the office to the entry opening
     ...chain([715, 560], [700, 573]),
     ...chain([656, 612], [647, 628], [647, 738]),
+    // Bathroom / office divider; the office opens onto the entry way
+    ...chain([647, 683], [855, 683]),
     // Pantry: left and bottom walls, a short stub on the right, and a wide-open door into the garage
     ...chain([855, 560], [855, 637], [940, 637]),
     ...chain([940, 560], [940, 566]),
@@ -94,7 +96,8 @@ export function buildHouse(): HouseLayout {
       // Kitchen and dining nook
       { texture: 'floor-kitchen', poly: [P(405, 305), P(405, 200), P(455, 153), P(525, 153), P(565, 195), P(565, 243), P(640, 243), P(640, 515), P(405, 515)] },
       { texture: 'floor-carpet', poly: [P(640, 243), P(978, 243), P(978, 560), P(640, 560)] },
-      { texture: 'floor-office', poly: [P(715, 560), P(855, 560), P(855, 830), P(647, 830), P(647, 628)] },
+      { texture: 'floor-bath', poly: [P(715, 560), P(855, 560), P(855, 683), P(647, 683), P(647, 628)] },
+      { texture: 'floor-office', poly: [P(647, 683), P(855, 683), P(855, 830), P(647, 830)] },
       { texture: 'floor-garage', poly: [P(978, 243), P(doorWallX, 243), P(doorWallX, 975), P(855, 975), P(855, 560), P(978, 560)] },
       { texture: 'floor-kitchen', poly: [P(855, 560), P(940, 560), P(940, 637), P(855, 637)] },
     ],
@@ -117,10 +120,14 @@ export function buildHouse(): HouseLayout {
       // Piano room
       spot('piano', 260, 752),
       spot('armchair', 345, 600, 180),
+      // Bathroom
+      spot('sink', 815, 587),
+      spot('bathtub', 790, 648),
+      spot('toilet', 682, 655, 270),
       // Office
       spot('desk', 760, 800, 180),
       spot('chair', 760, 760, 180),
-      spot('bookcase', 838, 690, 90),
+      spot('bookcase', 838, 748, 90),
       // Garage
       spot('car', 1030, 880),
       spot('workbench', 1188, 380, 90),
@@ -133,7 +140,8 @@ export function buildHouse(): HouseLayout {
       { box: box(415, 205, 558, 300) },                                   // dining nook
       { box: box(648, 250, 970, 552) },                                   // living room
       { box: box(486, 522, 640, 776), extras: { shoe: 5 } },              // entry way
-      { box: box(656, 632, 848, 822) },                                   // office
+      { box: box(656, 620, 848, 676), extras: { toiletpaper: 3, duck: 2 } }, // bathroom
+      { box: box(656, 692, 848, 822) },                                   // office
       { box: box(862, 567, 933, 630), extras: { can: 6, cheerio: 6 } },   // pantry
       { box: box(986, 250, 1207, 556), extras: { box: 4, can: 2 } },      // garage, top
       { box: box(862, 645, 1207, 830), extras: { box: 3 } },              // garage, bottom

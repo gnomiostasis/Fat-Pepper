@@ -123,6 +123,18 @@ function floorTextures(scene: Phaser.Scene) {
     scene.textures.addCanvas('floor-office', c);
   }
 
+  // Bathroom: pink and white little square tiles
+  {
+    const { c, ctx } = canvas(N, N), q = N / 8;
+    for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
+      ctx.fillStyle = (x + y) % 2 ? PAL.pink : PAL.white;
+      ctx.fillRect(x * q, y * q, q, q);
+    }
+    ctx.strokeStyle = 'rgba(35,26,20,0.14)'; ctx.lineWidth = 2;
+    for (let i = 0; i <= 8; i++) { ctx.beginPath(); ctx.moveTo(i * q, 0); ctx.lineTo(i * q, N); ctx.moveTo(0, i * q); ctx.lineTo(N, i * q); ctx.stroke(); }
+    scene.textures.addCanvas('floor-bath', c);
+  }
+
   // Garage: speckled concrete with an expansion joint
   {
     const { c, ctx } = canvas(N, N), r = rng(23);
