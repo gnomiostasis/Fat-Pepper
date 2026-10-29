@@ -3,7 +3,7 @@ import { DOG_BODY_RX, dogRig } from '../art/dog';
 import { ITEM_BY_ID, ItemDef } from '../art/items';
 import { PAL, hexNum } from '../art/palette';
 import { CHOMP_WORDS, DOG_FAT_STEPS, DOG_K, FLOOR_TILE_WORLD, ITEM_K, TAIL_ORIGIN, chompKey, dogKey, itemKey } from '../art/textures';
-import { Box, HouseLayout, PILES, SCATTER, buildHouse } from '../game/house';
+import { Box, HouseLayout, PILES, Pt, SCATTER, Seg, buildHouse } from '../game/house';
 import { DOOR_R, START_R, canEat, fatFor, formatSize, grownRadius, speedFor, zoomFor } from '../game/tuning';
 import { EV } from './events';
 
@@ -28,6 +28,8 @@ export class GameScene extends Phaser.Scene {
   private house!: HouseLayout;
   private things: Thing[] = [];
   private solids: Box[] = [];
+  /** Walls and the kitchen counter. */
+  private segs: Seg[] = [];
   private doorFlap!: Box;
   private flap!: Phaser.GameObjects.Graphics;
   private arrow!: Phaser.GameObjects.Graphics;
@@ -65,7 +67,7 @@ export class GameScene extends Phaser.Scene {
 
   create() {
     // A restarted scene reuses this object, so reset everything here.
-    this.things = []; this.solids = [];
+    this.things = []; this.solids = []; this.segs = [];
     this.r = this.shownR = START_R;
     this.vx = this.vy = 0; this.heading = -Math.PI / 2; this.walkPhase = 0; this.chomp = 0; this.dogStep = -1;
     this.biteT = -1; this.happy = 0; this.lastPop = 0;
@@ -76,13 +78,12 @@ export class GameScene extends Phaser.Scene {
     this.x = h.spawn.x; this.y = h.spawn.y;
 
     this.cameras.main.setBackgroundColor(PAL.avocadoDark);
-    this.add.tileSprite(-3000, -3000, h.width + 6000, h.height + 6000, 'floor-grass').setOrigin(0).setTileScale(FLOOR_SCALE).setDepth(-30000);
-    for (const f of h.floors) {
-      this.add.tileSprite(f.box.x, f.box.y, f.box.w, f.box.h, f.texture).setOrigin(0).setTileScale(FLOOR_SCALE).setDepth(-29000);
-    }
-
+    const b = h.bounds;
+    this.add.tileSprite(b.x - 3000, b.y - 3000, b.w + 6000, b.h + 6000, 'floor-grass').setOrigin(0).setTileScale(FLOOR_SCALE).setDepth(-30000);
+    this.buildFloors();
     this.buildWalls();
     this.buildDoor();
+    for (const d of h.decals) this.addDecal(d.id, d.x, d.y, d.rot);
     for (const spot of h.furniture) this.addFurniture(spot.id, spot.x, spot.y, spot.rot);
     this.scatterItems();
 
@@ -114,14 +115,57 @@ export class GameScene extends Phaser.Scene {
 
   // ---------- building the house ----------
 
+  /** Each floor is a tiled texture clipped to its room's outline. */
+  private buildFloors() {
+    this.house.floors.forEach((f, i) => {
+      const xs = f.poly.map((p) => p[0]), ys = f.poly.map((p) => p[1]);
+      const x0 = Math.min(...xs), y0 = Math.min(...ys);
+      const tile = this.add.tileSprite(x0, y0, Math.max(...xs) - x0, Math.max(...ys) - y0, f.texture)
+        .setOrigin(0).setTileScale(FLOOR_SCALE).setDepth(-29000 + i);
+      const shape = this.make.graphics({}, false);
+      shape.fillStyle(0xffffff).fillPoints(f.poly.map(([x, y]) => new Phaser.Math.Vector2(x, y)), true);
+      tile.setMask(shape.createGeometryMask());
+    });
+  }
+
   private buildWalls() {
+    const h = this.house;
+    this.segs = [...h.walls, h.frontDoor, ...h.counters];
+
+    // Ink first, a little fatter, then the colour on top, so joints merge cleanly.
     const g = this.add.graphics().setDepth(5);
-    for (const w of this.house.walls) {
-      this.solids.push(w);
-      g.fillStyle(hexNum(PAL.tealDark)).fillRect(w.x + 2, w.y - 1.2, w.w, w.h);
+    const paint = (segs: Seg[], color: string, grow: number, dx = 0, dy = 0) => {
+      g.fillStyle(hexNum(color));
+      for (const sg of segs) g.fillPoints(segQuad(sg, grow, dx, dy), true);
+    };
+    paint(h.walls, PAL.ink, 4.5);
+    paint([h.frontDoor], PAL.ink, 4.5);
+    paint(h.counters, PAL.ink, 4.5);
+    paint(h.walls, PAL.tealDark, 0, 1.6, -1);
+    paint([h.frontDoor], PAL.wood, -3, 1.6, -1);
+    paint(h.counters, PAL.white, 0, 1.6, -1);
+    // Front door knob
+    const fd = h.frontDoor;
+    g.fillStyle(hexNum(PAL.mustard)).fillCircle(fd.a[0] + (fd.b[0] - fd.a[0]) * 0.8, fd.a[1], 2.6);
+
+    // Stairs: solid, drawn as treads going up
+    const st = h.stairs;
+    this.solids.push(st);
+    const sg = this.add.graphics().setDepth(4);
+    sg.fillStyle(hexNum(PAL.ink)).fillRect(st.x - 2, st.y - 2, st.w + 4, st.h + 4);
+    sg.fillStyle(hexNum(PAL.wood)).fillRect(st.x + 1.6, st.y - 1, st.w, st.h);
+    const steps = 9;
+    for (let i = 1; i < steps; i++) {
+      const y = st.y + (st.h * i) / steps;
+      sg.fillStyle(hexNum(PAL.woodDark)).fillRect(st.x, y - 1.2, st.w, 2.4);
     }
-    g.lineStyle(2.4, hexNum(PAL.ink));
-    for (const w of this.house.walls) g.strokeRect(w.x, w.y, w.w, w.h);
+  }
+
+  /** Something flat on the floor that Pepper walks over, like her bed. */
+  private addDecal(id: string, x: number, y: number, rotDeg: number) {
+    const def = ITEM_BY_ID[id];
+    const sc = def.size / Math.max(def.w, def.h) / ITEM_K;
+    this.add.image(x, y, itemKey(def.id)).setScale(sc).setRotation(Phaser.Math.DegToRad(rotDeg)).setDepth(-25000);
   }
 
   private buildDoor() {
@@ -166,41 +210,47 @@ export class GameScene extends Phaser.Scene {
 
   private scatterItems() {
     const h = this.house;
-    const area = h.rooms.map((b) => b.w * b.h), total = area.reduce((a, b) => a + b, 0);
+    const area = h.rooms.map((r) => r.box.w * r.box.h), total = area.reduce((a, b) => a + b, 0);
     const pickRoom = () => {
       let t = Math.random() * total;
-      for (let i = 0; i < h.rooms.length; i++) { t -= area[i]; if (t <= 0) return h.rooms[i]; }
-      return h.rooms[0];
+      for (let i = 0; i < h.rooms.length; i++) { t -= area[i]; if (t <= 0) return h.rooms[i].box; }
+      return h.rooms[0].box;
     };
 
     const radOf = (def: ItemDef) => (def.size / 2) * ((def.w + def.h) / 2) / Math.max(def.w, def.h);
     const tryPlace = (def: ItemDef, x: number, y: number) => {
       const rad = radOf(def);
       if (this.solids.some((b) => circleBoxDist(x, y, b) < rad + 3)) return false;
+      if (this.segs.some((sg) => segHit(x, y, sg).d < rad + sg.t / 2 + 3)) return false;
       if (this.things.some((o) => !o.box && o.rad > 2 && Math.hypot(o.x - x, o.y - y) < rad + o.rad + 1)) return false;
       if (!canEat(START_R, def.size)) {
         // Keep the start spot and the way to the dog door clear of anything Pepper can't eat yet.
         if (Math.hypot(x - h.spawn.x, y - h.spawn.y) < rad + 40) return false;
         if (Math.hypot(x - h.door.x, y - h.door.y) < rad + 80) return false;
+        if (h.doorways.some(([dx, dy]) => Math.hypot(x - dx, y - dy) < rad + 50)) return false;
       }
       const { sprite, shadow } = this.makeSprites(def, x, y, Math.random() * Math.PI * 2);
       this.things.push({ def, x, y, rad, sprite, shadow, eaten: false, wobbling: false });
       return true;
     };
-    const randomSpot = (rad: number) => {
-      const room = pickRoom();
-      return [room.x + rad + Math.random() * (room.w - rad * 2), room.y + rad + Math.random() * (room.h - rad * 2)];
+    const randomSpot = (rad: number, room = pickRoom()) =>
+      [room.x + rad + Math.random() * (room.w - rad * 2), room.y + rad + Math.random() * (room.h - rad * 2)];
+    const placeIn = (def: ItemDef, room?: Box) => {
+      for (let tries = 0; tries < 40; tries++) {
+        const [x, y] = randomSpot(radOf(def), room);
+        if (tryPlace(def, x, y)) return;
+      }
     };
 
     // Big things first so the small stuff fills in around them.
     const order = Object.entries(SCATTER).sort((a, b) => ITEM_BY_ID[b[0]].size - ITEM_BY_ID[a[0]].size);
     for (const [id, count] of order) {
-      const def = ITEM_BY_ID[id];
-      for (let n = 0; n < count; n++) {
-        for (let tries = 0; tries < 40; tries++) {
-          const [x, y] = randomSpot(radOf(def));
-          if (tryPlace(def, x, y)) break;
-        }
+      for (let n = 0; n < count; n++) placeIn(ITEM_BY_ID[id]);
+    }
+    // Room-specific things: cans in the pantry, boxes in the garage, shoes by the front door.
+    for (const room of h.rooms) {
+      for (const [id, count] of Object.entries(room.extras ?? {})) {
+        for (let n = 0; n < count; n++) placeIn(ITEM_BY_ID[id], room.box);
       }
     }
 
@@ -296,6 +346,15 @@ export class GameScene extends Phaser.Scene {
       if (vn < 0) { this.vx -= vn * ox; this.vy -= vn * oy; }
     }
 
+    for (const sg of this.segs) {
+      const hit = segHit(this.x, this.y, sg), min = r + sg.t / 2;
+      if (hit.d >= min || hit.d < 0.0001) continue;
+      const ox = (this.x - hit.x) / hit.d, oy = (this.y - hit.y) / hit.d;
+      this.x = hit.x + ox * min; this.y = hit.y + oy * min;
+      const vn = this.vx * ox + this.vy * oy;
+      if (vn < 0) { this.vx -= vn * ox; this.vy -= vn * oy; }
+    }
+
     // Loose things that are still too big to eat are solid too.
     for (const t of this.things) {
       if (t.eaten || t.box || canEat(r, t.def.size)) continue;
@@ -343,7 +402,7 @@ export class GameScene extends Phaser.Scene {
     this.game.events.emit(EV.eat, t.def.name);
     this.game.events.emit(EV.size, this.r);
     if (before < DOOR_R && this.r >= DOOR_R) {
-      this.game.events.emit(EV.toast, 'Big enough! Jump out the dog door in the kitchen.');
+      this.game.events.emit(EV.toast, 'Big enough! Head for the dog door in the garage.');
     }
   }
 
@@ -472,4 +531,26 @@ export class GameScene extends Phaser.Scene {
 function circleBoxDist(x: number, y: number, b: Box) {
   const nx = Phaser.Math.Clamp(x, b.x, b.x + b.w), ny = Phaser.Math.Clamp(y, b.y, b.y + b.h);
   return Math.hypot(x - nx, y - ny);
+}
+
+/** Closest point on a wall segment to x,y, and the distance to it. */
+function segHit(x: number, y: number, sg: Seg) {
+  const [ax, ay] = sg.a, [bx, by] = sg.b, dx = bx - ax, dy = by - ay;
+  const t = Phaser.Math.Clamp(((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy || 1), 0, 1);
+  const px = ax + dx * t, py = ay + dy * t;
+  return { x: px, y: py, d: Math.hypot(x - px, y - py) };
+}
+
+/** A wall segment as a filled quad, padded by `grow` on every side (so ends overlap at corners). */
+function segQuad(sg: Seg, grow: number, ox = 0, oy = 0): Phaser.Math.Vector2[] {
+  const [ax, ay] = sg.a, [bx, by] = sg.b, len = Math.hypot(bx - ax, by - ay) || 1;
+  const ux = (bx - ax) / len, uy = (by - ay) / len, nx = -uy, ny = ux;
+  const half = sg.t / 2 + grow, ext = sg.t / 2 + grow;
+  const pts: Pt[] = [
+    [ax - ux * ext + nx * half, ay - uy * ext + ny * half],
+    [bx + ux * ext + nx * half, by + uy * ext + ny * half],
+    [bx + ux * ext - nx * half, by + uy * ext - ny * half],
+    [ax - ux * ext - nx * half, ay - uy * ext - ny * half],
+  ];
+  return pts.map(([x, y]) => new Phaser.Math.Vector2(x + ox, y + oy));
 }

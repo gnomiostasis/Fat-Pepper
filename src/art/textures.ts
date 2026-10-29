@@ -95,6 +95,43 @@ function floorTextures(scene: Phaser.Scene) {
     scene.textures.addCanvas('floor-carpet', c);
   }
 
+  // Dining room, piano room and entry: warm wood planks
+  {
+    const { c, ctx } = canvas(N, N), r = rng(11), plank = N / 4;
+    for (let i = 0; i < 4; i++) {
+      ctx.fillStyle = i % 2 ? PAL.woodLight : lighten(PAL.woodLight, 0.12);
+      ctx.fillRect(0, i * plank, N, plank);
+      const cut = (i * 97) % N;
+      ctx.fillStyle = 'rgba(35,26,20,0.35)'; ctx.fillRect(cut, i * plank, 2, plank);
+    }
+    ctx.fillStyle = 'rgba(35,26,20,0.3)';
+    for (let i = 0; i <= 4; i++) ctx.fillRect(0, i * plank - 1, N, 2);
+    ctx.strokeStyle = 'rgba(138,82,38,0.25)'; ctx.lineWidth = 2;
+    for (let i = 0; i < 14; i++) { const y = r() * N, x = r() * N; ctx.beginPath(); ctx.moveTo(x, y); ctx.quadraticCurveTo(x + 30, y + 4, x + 60, y); ctx.stroke(); }
+    scene.textures.addCanvas('floor-wood', c);
+  }
+
+  // Office: teal carpet with little diamonds
+  {
+    const { c, ctx } = canvas(N, N), r = rng(5);
+    ctx.fillStyle = PAL.tealLight; ctx.fillRect(0, 0, N, N);
+    for (let i = 0; i < 700; i++) { ctx.fillStyle = r() > 0.5 ? 'rgba(20,60,50,0.15)' : 'rgba(255,250,220,0.12)'; ctx.fillRect(r() * N, r() * N, 2, 3); }
+    ctx.fillStyle = lighten(PAL.tealLight, 0.3);
+    for (const [x, y] of [[64, 64], [192, 192], [192, 64], [64, 192]]) {
+      ctx.beginPath(); ctx.moveTo(x, y - 9); ctx.lineTo(x + 6, y); ctx.lineTo(x, y + 9); ctx.lineTo(x - 6, y); ctx.fill();
+    }
+    scene.textures.addCanvas('floor-office', c);
+  }
+
+  // Garage: speckled concrete with an expansion joint
+  {
+    const { c, ctx } = canvas(N, N), r = rng(23);
+    ctx.fillStyle = PAL.greyLight; ctx.fillRect(0, 0, N, N);
+    for (let i = 0; i < 1200; i++) { ctx.fillStyle = r() > 0.5 ? 'rgba(35,26,20,0.12)' : 'rgba(255,255,255,0.25)'; ctx.fillRect(r() * N, r() * N, 2, 2); }
+    ctx.fillStyle = 'rgba(35,26,20,0.18)'; ctx.fillRect(0, 0, N, 2); ctx.fillRect(0, 0, 2, N);
+    scene.textures.addCanvas('floor-garage', c);
+  }
+
   // Outside: grass with boomerangs, peeking past the walls
   {
     const { c, ctx } = canvas(N, N), r = rng(7);
