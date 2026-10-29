@@ -71,6 +71,8 @@ export function buildHouse(): HouseLayout {
     ...chain([656, 612], [647, 628], [647, 738]),
     // Bathroom / office divider; the office opens onto the entry way
     ...chain([647, 683], [855, 683]),
+    // Bathroom and office / garage
+    ...chain([855, 637], [855, 830]),
     // Pantry: left and bottom walls, a short stub on the right, and a wide-open door into the garage
     ...chain([855, 560], [855, 637], [940, 637]),
     ...chain([940, 560], [940, 566]),
