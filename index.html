@@ -9,11 +9,12 @@
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@400;700;800&display=swap" />
     <style>
       html, body { margin: 0; height: 100%; background: #8f9752; overflow: hidden; touch-action: none; overscroll-behavior: none; }
-      #game { position: fixed; inset: 0; }
+      #world, #game { position: fixed; inset: 0; }
       canvas { display: block; }
     </style>
   </head>
   <body>
+    <div id="world"></div>
     <div id="game"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
