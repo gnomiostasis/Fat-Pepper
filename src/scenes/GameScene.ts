@@ -98,7 +98,7 @@ export class GameScene extends Phaser.Scene {
     this.renderDog(0);
 
     const cam = this.cameras.main;
-    cam.startFollow(this.dog, true, 0.12, 0.12);
+    cam.startFollow(this.dog, true, 0.3, 0.3);
     cam.setZoom(zoomFor(this.r, Math.min(this.scale.width, this.scale.height)));
 
     const kb = this.input.keyboard!;
@@ -293,15 +293,17 @@ export class GameScene extends Phaser.Scene {
     if (k.up.isDown || k.w.isDown) dy -= 1;
     if (k.down.isDown || k.s.isDown) dy += 1;
     const p = this.input.activePointer;
+    // Slows to a stop right under the pointer instead of jittering around it
+    let ease = 1;
     if (p.isDown) {
       const wp = p.positionToCamera(this.cameras.main) as Phaser.Math.Vector2;
       const px = wp.x - this.x, py = wp.y - this.y, d = Math.hypot(px, py);
-      if (d > this.r * 0.4) { dx = px / d; dy = py / d; }
+      if (d > this.r * 0.4) { dx = px / d; dy = py / d; ease = Math.min(1, d / (this.r * 2.5)); }
     }
     const len = Math.hypot(dx, dy);
     if (len > 0) { dx /= len; dy /= len; }
 
-    const speed = speedFor(this.r), a = 1 - Math.exp(-dt * 9);
+    const speed = speedFor(this.r) * ease, a = 1 - Math.exp(-dt * 22);
     this.vx += (dx * speed - this.vx) * a;
     this.vy += (dy * speed - this.vy) * a;
     this.x += this.vx * dt;
@@ -311,7 +313,7 @@ export class GameScene extends Phaser.Scene {
     this.eatNearby();
 
     const v = Math.hypot(this.vx, this.vy);
-    if (v > speed * 0.1) this.heading = Phaser.Math.Angle.RotateTo(this.heading, Math.atan2(this.vy, this.vx), dt * 10);
+    if (v > speedFor(this.r) * 0.1) this.heading = Phaser.Math.Angle.RotateTo(this.heading, Math.atan2(this.vy, this.vx), dt * 24);
     this.walkPhase += (v / this.r) * dt * 1.4;
   }
 
