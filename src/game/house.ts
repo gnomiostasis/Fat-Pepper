@@ -1,36 +1,8 @@
 // Phase 1 level: Pepper's real house, traced from the floor plan the owner drew.
 // Coordinates below are in pixels of that drawing; `S` turns them into centimetres.
 
-export interface Box { x: number; y: number; w: number; h: number }
-export type Pt = [number, number];
-
-/** A straight wall (or counter) of thickness `t`, from `a` to `b`. */
-export interface Seg { a: Pt; b: Pt; t: number }
-
-export interface FurnitureSpot { id: string; x: number; y: number; rot: 0 | 90 | 180 | 270 }
-
-export interface HouseLayout {
-  /** Outer extent of the house. */
-  bounds: Box;
-  walls: Seg[];
-  /** The closed front door, drawn as a door rather than a wall. */
-  frontDoor: Seg;
-  /** Kitchen counter: solid, drawn as countertop. */
-  counters: Seg[];
-  stairs: Box;
-  floors: { poly: Pt[]; texture: string }[];
-  furniture: FurnitureSpot[];
-  /** Flat things on the floor that Pepper walks over. */
-  decals: FurnitureSpot[];
-  /** Areas where loose items get scattered, with optional extras just for that room. */
-  rooms: { box: Box; extras?: Record<string, number> }[];
-  /** Openings between rooms; big items are kept out of them so Pepper never gets stuck. */
-  doorways: Pt[];
-  /** The dog door: a gap in the garage's outside wall. `x` is the wall's inner face. */
-  door: { x: number; y: number; half: number };
-  wallThickness: number;
-  spawn: { x: number; y: number };
-}
+import { PAL } from '../art/palette';
+import type { Box, FurnitureSpot, Level, Pt, Seg } from './level';
 
 /** Centimetres per pixel of the floor plan drawing. */
 const S = 1.2;
@@ -50,7 +22,7 @@ function chain(...pts: [number, number][]): Seg[] {
   return out;
 }
 
-export function buildHouse(): HouseLayout {
+export function buildHouse(): Level {
   const doorWallX = 1215;
 
   const walls: Seg[] = [
@@ -151,12 +123,17 @@ export function buildHouse(): HouseLayout {
     doorways: [P(899, 560), P(940, 600), P(678, 593), P(647, 762), P(438, 440), P(440, 736), P(293, 532), P(560, 280)],
     door: { x: X(doorWallX) - T / 2, y: Y(doorY), half: ((632 - 578) / 2) * S },
     wallThickness: T,
+    wallStyle: { color: PAL.teal, height: 32 },
+    buildings: [],
+    marks: [],
     spawn: { x: X(870), y: Y(470) },
+    scatter: SCATTER,
+    piles: PILES,
   };
 }
 
 /** How many loose items of each kind to scatter around the house. */
-export const SCATTER: Record<string, number> = {
+const SCATTER: Record<string, number> = {
   crumb: 80, kibble: 50, cheerio: 45, coin: 22, button: 26, pea: 40,
   cookie: 20, ball: 14, donut: 12, crayon: 16, mouse: 12, bone: 12, sock: 16, sandwich: 10, can: 4,
   banana: 8, truck: 10, book: 12, teddy: 8, slipper: 10, shoe: 4,
@@ -164,7 +141,7 @@ export const SCATTER: Record<string, number> = {
 };
 
 /** Little spills of tiny food, so a puppy always has a snack trail nearby. */
-export const PILES: { id: string; piles: number; each: number; spread: number }[] = [
+const PILES: { id: string; piles: number; each: number; spread: number }[] = [
   { id: 'kibble', piles: 12, each: 14, spread: 22 },
   { id: 'cheerio', piles: 10, each: 12, spread: 24 },
   { id: 'crumb', piles: 13, each: 10, spread: 18 },

@@ -2,10 +2,15 @@ import Phaser from 'phaser';
 import { ITEM_BY_ID, ItemDef } from '../art/items';
 import { PAL, hexNum } from '../art/palette';
 import { CHOMP_WORDS, chompKey } from '../art/textures';
-import { Box, HouseLayout, PILES, SCATTER, Seg, buildHouse } from '../game/house';
-import { DOOR_R, START_R, canEat, fatFor, formatSize, grownRadius, speedFor, viewFor } from '../game/tuning';
+import { buildHouse } from '../game/house';
+import type { Box, Level, Pt, Seg } from '../game/level';
+import { buildNeighborhood } from '../game/neighborhood';
+import {
+  CATCHER_EAT_R, CATCHER_R, CATCHER_RAD, CATCHER_SIZE, CATCHER_SPEED, DOOR_R, START_R,
+  canEat, fatFor, formatSize, grownRadius, speedFor, viewFor,
+} from '../game/tuning';
 import { Placed, World3D, getWorld } from '../world3d/World3D';
-import { EV } from './events';
+import { EV, Goal, RunStats } from './events';
 
 interface Thing extends Placed {
   /** Collision radius for loose items. */
@@ -15,13 +20,42 @@ interface Thing extends Placed {
   eaten: boolean;
 }
 
+/** The dog catcher, once he's on Pepper's trail. */
+interface Catcher {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  heading: number;
+  gait: number;
+  /** Seconds left in his net lunge, and until he can lunge again. */
+  lunge: number;
+  cool: number;
+  /** 0..1, how far the net is swung down. */
+  swing: number;
+  /** When he's stuck behind something he walks sideways for a moment. */
+  detour: number;
+  detourAng: number;
+  checkT: number;
+  lastX: number;
+  lastY: number;
+  /** Once Pepper is big enough, he runs away from her instead. */
+  fleeing: boolean;
+  /** Seconds since Pepper ate him, or -1. */
+  eatenT: number;
+}
+
 export class GameScene extends Phaser.Scene {
-  private house!: HouseLayout;
+  private house!: Level;
+  private outside = false;
+  private catcher: Catcher | null = null;
+  /** Building edges, solid like walls but drawn as part of the building. */
+  private buildingPolys: Pt[][] = [];
   private things: Thing[] = [];
   private solids: Box[] = [];
   /** Walls and the kitchen counter. */
   private segs: Seg[] = [];
-  private doorFlap!: Box;
+  private doorFlap: Box | null = null;
   private world!: World3D;
   private keys!: Record<'up' | 'down' | 'left' | 'right' | 'w' | 'a' | 's' | 'd', Phaser.Input.Keyboard.Key>;
 
@@ -56,24 +90,13 @@ export class GameScene extends Phaser.Scene {
     this.vx = this.vy = 0; this.heading = -Math.PI / 2; this.walkPhase = 0; this.chomp = 0;
     this.biteT = -1; this.happy = 0; this.lastPop = 0;
     this.started = false; this.finished = false; this.eatenCount = 0; this.tooSmallUntil = 0;
+    this.outside = false; this.catcher = null;
 
-    this.house = buildHouse();
-    const h = this.house;
-    this.x = h.spawn.x; this.y = h.spawn.y;
-
-    // The house is drawn in 3D underneath; this scene keeps the rules and the comic pops.
+    // The level is drawn in 3D underneath; this scene keeps the rules and the comic pops.
     this.world = getWorld();
-    this.world.build(h);
-    this.segs = [...h.walls, h.frontDoor, ...h.counters];
-    this.solids.push(h.stairs);
-    this.doorFlap = { x: h.door.x, y: h.door.y - h.door.half, w: h.wallThickness, h: h.door.half * 2 };
-    this.solids.push(this.doorFlap);
-    const decals: Placed[] = h.decals.map((d) => ({ def: ITEM_BY_ID[d.id], x: d.x, y: d.y, rot: Phaser.Math.DegToRad(d.rot) }));
-    for (const spot of h.furniture) this.addFurniture(spot.id, spot.x, spot.y, spot.rot);
-    this.scatterItems();
-    this.world.addThings([...decals, ...this.things]);
-    this.world.follow(this.x, this.y, viewFor(this.r), 0, true);
-    this.renderDog(0);
+    this.world.catcher.show(false);
+    this.loadLevel(buildHouse());
+    this.heading = -Math.PI / 2;
 
     const kb = this.input.keyboard!;
     this.keys = kb.addKeys({
@@ -85,9 +108,44 @@ export class GameScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.game.events.off(EV.start, onStart));
 
     this.game.events.emit(EV.size, this.r);
+    this.emitGoal();
   }
 
-  // ---------- setting up the house ----------
+  // ---------- setting up a level ----------
+
+  private loadLevel(level: Level) {
+    this.house = level;
+    this.things = []; this.solids = []; this.segs = [];
+    this.x = level.spawn.x; this.y = level.spawn.y;
+    this.vx = this.vy = 0;
+
+    this.buildingPolys = level.buildings.map((b) => b.poly);
+    const edges = this.buildingPolys.flatMap((poly) => poly.map((a, i): Seg => ({ a, b: poly[(i + 1) % poly.length], t: 4 })));
+    this.segs = [...level.walls, ...level.counters, ...edges, ...(level.frontDoor ? [level.frontDoor] : [])];
+    if (level.stairs) this.solids.push(level.stairs);
+    this.doorFlap = null;
+    if (level.door) {
+      this.doorFlap = { x: level.door.x, y: level.door.y - level.door.half, w: level.wallThickness, h: level.door.half * 2 };
+      this.solids.push(this.doorFlap);
+    }
+
+    this.world.build(level);
+    const decals: Placed[] = level.decals.map((d) => ({ def: ITEM_BY_ID[d.id], x: d.x, y: d.y, rot: Phaser.Math.DegToRad(d.rot) }));
+    for (const spot of level.furniture) this.addFurniture(spot.id, spot.x, spot.y, spot.rot);
+    this.scatterItems();
+    this.world.addThings([...decals, ...this.things]);
+    this.world.follow(this.x, this.y, viewFor(this.shownR), 0, true);
+    this.renderDog(0);
+  }
+
+  /** Tells the HUD what Pepper is growing toward right now. */
+  private emitGoal() {
+    let goal: Goal;
+    if (!this.outside) goal = { from: START_R, to: DOOR_R, label: 'Dog door at', reached: 'Dog door: OPEN!' };
+    else if (!this.catcher) goal = { from: DOOR_R, to: CATCHER_R, label: 'Dog catcher alert at', reached: 'The dog catcher is coming!' };
+    else goal = { from: CATCHER_R, to: CATCHER_EAT_R, label: 'Eat the catcher at', reached: 'Eat the dog catcher!' };
+    this.game.events.emit(EV.goal, goal);
+  }
 
   private addFurniture(id: string, x: number, y: number, rotDeg: number) {
     const def = ITEM_BY_ID[id];
@@ -114,11 +172,12 @@ export class GameScene extends Phaser.Scene {
       if (this.solids.some((b) => circleBoxDist(x, y, b) < rad + 3)) return false;
       if (this.segs.some((sg) => segHit(x, y, sg).d < rad + sg.t / 2 + 3)) return false;
       if (this.things.some((o) => !o.box && o.rad > 2 && Math.hypot(o.x - x, o.y - y) < rad + o.rad + 1)) return false;
-      if (!canEat(START_R, def.size)) {
-        // Keep the start spot and the way to the dog door clear of anything Pepper can't eat yet.
-        if (Math.hypot(x - h.spawn.x, y - h.spawn.y) < rad + 40) return false;
-        if (Math.hypot(x - h.door.x, y - h.door.y) < rad + 80) return false;
-        if (h.doorways.some(([dx, dy]) => Math.hypot(x - dx, y - dy) < rad + 50)) return false;
+      if (this.buildingPolys.some((poly) => inPoly(x, y, poly))) return false;
+      if (!canEat(this.r, def.size)) {
+        // Keep the start spot and the ways through clear of anything Pepper can't eat yet.
+        if (Math.hypot(x - h.spawn.x, y - h.spawn.y) < rad + this.r * 6) return false;
+        if (h.door && Math.hypot(x - h.door.x, y - h.door.y) < rad + 80) return false;
+        if (h.doorways.some(([dx, dy]) => Math.hypot(x - dx, y - dy) < rad + Math.max(50, this.r * 2))) return false;
       }
       this.things.push({ def, x, y, rot: Math.random() * Math.PI * 2, rad, eaten: false });
       return true;
@@ -133,7 +192,7 @@ export class GameScene extends Phaser.Scene {
     };
 
     // Big things first so the small stuff fills in around them.
-    const order = Object.entries(SCATTER).sort((a, b) => ITEM_BY_ID[b[0]].size - ITEM_BY_ID[a[0]].size);
+    const order = Object.entries(h.scatter).sort((a, b) => ITEM_BY_ID[b[0]].size - ITEM_BY_ID[a[0]].size);
     for (const [id, count] of order) {
       for (let n = 0; n < count; n++) placeIn(ITEM_BY_ID[id]);
     }
@@ -146,11 +205,11 @@ export class GameScene extends Phaser.Scene {
 
     // Spills of tiny food. The first one lands right next to Pepper.
     let first = true;
-    for (const pile of PILES) {
+    for (const pile of h.piles) {
       const def = ITEM_BY_ID[pile.id];
       for (let n = 0; n < pile.piles; n++) {
         let [cx, cy] = randomSpot(pile.spread);
-        if (first) { cx = h.spawn.x + 34; cy = h.spawn.y - 6; first = false; }
+        if (first) { cx = h.spawn.x + this.r * 5.5; cy = h.spawn.y - this.r; first = false; }
         for (let i = 0; i < pile.each; i++) {
           const a = Math.random() * Math.PI * 2, d = Math.sqrt(Math.random()) * pile.spread;
           tryPlace(def, cx + Math.cos(a) * d, cy + Math.sin(a) * d);
@@ -167,6 +226,7 @@ export class GameScene extends Phaser.Scene {
     this.shownR += (this.r - this.shownR) * (1 - Math.exp(-dt * 8));
     this.chomp *= Math.exp(-dt * 10);
     this.renderDog(dt);
+    this.renderCatcher(dt);
     this.drawDoorArrow();
     this.world.follow(this.x, this.y, viewFor(this.shownR), dt);
     this.world.render(dt);
@@ -200,7 +260,11 @@ export class GameScene extends Phaser.Scene {
     this.y += this.vy * dt;
 
     this.collide(time);
+    const b = this.house.bounds;
+    this.x = Phaser.Math.Clamp(this.x, b.x + this.r, b.x + b.w - this.r);
+    this.y = Phaser.Math.Clamp(this.y, b.y + this.r, b.y + b.h - this.r);
     this.eatNearby();
+    this.stepCatcher(dt);
 
     const v = Math.hypot(this.vx, this.vy);
     if (v > speedFor(this.r) * 0.1) this.heading = Phaser.Math.Angle.RotateTo(this.heading, Math.atan2(this.vy, this.vx), dt * 24);
@@ -324,20 +388,148 @@ export class GameScene extends Phaser.Scene {
 
   private exitThroughDoor() {
     this.finished = true;
-    const { door } = this.house;
+    const door = this.house.door!;
     this.vx = this.vy = 0;
     this.heading = 0;
     this.world.flapOpen();
     this.tweens.add({
       targets: this, x: door.x + this.r * 3, y: door.y, duration: 700, ease: 'Quad.easeIn',
-      onComplete: () => {
-        this.game.events.emit(EV.done, {
-          seconds: (this.time.now - this.startTime) / 1000,
-          eaten: this.eatenCount,
-          r: this.r,
-        });
-      },
+      onComplete: () => this.goOutside(),
     });
+  }
+
+  /** Phase 2: out the dog door and into the neighborhood. */
+  private goOutside() {
+    this.outside = true;
+    this.loadLevel(buildNeighborhood());
+    this.heading = 0;
+    this.finished = false;
+    this.emitGoal();
+    this.game.events.emit(EV.toast, `Pepper's out! The whole neighborhood is a buffet. Watch out for the dog catcher once you hit ${formatSize(CATCHER_R)}.`);
+  }
+
+  private endRun(outcome: RunStats['outcome']) {
+    this.finished = true;
+    const stats: RunStats = { outcome, seconds: (this.time.now - this.startTime) / 1000, eaten: this.eatenCount, r: this.r };
+    this.time.delayedCall(1100, () => this.game.events.emit(EV.done, stats));
+  }
+
+  // ---------- the dog catcher ----------
+
+  /** He shows up at the street corner nearest a good distance away. */
+  private spawnCatcher() {
+    const spots = this.house.catcherSpawns ?? [[this.house.bounds.x, this.house.bounds.y]];
+    const far = (p: Pt) => Math.abs(Math.hypot(p[0] - this.x, p[1] - this.y) - 3200);
+    const [x, y] = [...spots].sort((a, b) => far(a) - far(b))[0];
+    this.catcher = {
+      x, y, vx: 0, vy: 0, heading: Math.atan2(this.y - y, this.x - x), gait: 0, lunge: 0, cool: 2, swing: 0,
+      detour: 0, detourAng: 0, checkT: 0, lastX: x, lastY: y, fleeing: false, eatenT: -1,
+    };
+    this.world.catcher.show(true);
+    this.emitGoal();
+    this.game.events.emit(EV.toast, `Uh oh! The dog catcher spotted Pepper. Keep eating, and don't let him catch you until you're ${formatSize(CATCHER_EAT_R)}.`);
+  }
+
+  private stepCatcher(dt: number) {
+    if (!this.outside) return;
+    if (!this.catcher) { if (this.r >= CATCHER_R) this.spawnCatcher(); return; }
+    const c = this.catcher;
+    const big = canEat(this.r, CATCHER_SIZE);
+    if (big && !c.fleeing) {
+      c.fleeing = true;
+      this.game.events.emit(EV.toast, 'Pepper is bigger than the dog catcher now. Eat him!');
+    }
+
+    const dx = this.x - c.x, dy = this.y - c.y, d = Math.hypot(dx, dy) || 1;
+    let ang = Math.atan2(dy, dx) + (c.fleeing ? Math.PI : 0);
+    if (c.detour > 0) { c.detour -= dt; ang += c.detourAng; }
+
+    // He keeps up with a growing Pepper, and lunges with the net when he's close.
+    let speed = c.fleeing ? 0.72 * speedFor(this.r) : Math.max(CATCHER_SPEED, 0.8 * speedFor(this.r));
+    c.cool -= dt;
+    if (!c.fleeing && c.lunge <= 0 && c.cool <= 0 && d < this.r + CATCHER_RAD + 260) { c.lunge = 0.55; c.cool = 2.6; }
+    if (c.lunge > 0) { c.lunge -= dt; speed *= 1.7; }
+    const a = 1 - Math.exp(-dt * 8);
+    c.vx += (Math.cos(ang) * speed - c.vx) * a;
+    c.vy += (Math.sin(ang) * speed - c.vy) * a;
+    c.x += c.vx * dt; c.y += c.vy * dt;
+    this.pushOut(c, CATCHER_RAD);
+    const b = this.house.bounds;
+    c.x = Phaser.Math.Clamp(c.x, b.x + CATCHER_RAD, b.x + b.w - CATCHER_RAD);
+    c.y = Phaser.Math.Clamp(c.y, b.y + CATCHER_RAD, b.y + b.h - CATCHER_RAD);
+
+    // Stuck behind a fence or a house? Walk sideways for a bit.
+    c.checkT += dt;
+    if (c.checkT > 0.6) {
+      if (Math.hypot(c.x - c.lastX, c.y - c.lastY) < speed * 0.6 * 0.3 && c.detour <= 0) {
+        c.detour = 0.9; c.detourAng = (Math.random() < 0.5 ? -1 : 1) * Math.PI / 2;
+      }
+      c.checkT = 0; c.lastX = c.x; c.lastY = c.y;
+    }
+    const v = Math.hypot(c.vx, c.vy);
+    if (v > 10) c.heading = Phaser.Math.Angle.RotateTo(c.heading, Math.atan2(c.vy, c.vx), dt * 10);
+    c.gait += (v / 45) * dt;
+
+    if (d < this.r + CATCHER_RAD + (c.lunge > 0 ? 30 : 5)) {
+      if (big) this.eatCatcher(); else this.getCaught();
+    }
+  }
+
+  private getCaught() {
+    const c = this.catcher!;
+    c.swing = 1; c.lunge = 0;
+    this.vx = this.vy = 0;
+    this.game.events.emit(EV.toast, 'Gotcha! The dog catcher netted Pepper.');
+    this.endRun('caught');
+  }
+
+  private eatCatcher() {
+    const c = this.catcher!;
+    c.eatenT = 0;
+    this.chomp = 1; this.biteT = 0; this.happy = 1;
+    this.eatenCount++;
+    this.game.events.emit(EV.eat, 'the dog catcher');
+    const [sx, sy] = this.world.toScreen(c.x, c.y, 100), ppc = this.world.pxPerCm();
+    this.crumbBurst(sx, sy, this.r * ppc);
+    this.chompPop(sx, sy, this.r * ppc);
+    this.endRun('ate-catcher');
+  }
+
+  /** Slides a walker (the dog catcher) out of walls, fences, buildings and furniture. */
+  private pushOut(e: { x: number; y: number; vx: number; vy: number }, r: number) {
+    for (const b of this.solids) {
+      const nx = Phaser.Math.Clamp(e.x, b.x, b.x + b.w), ny = Phaser.Math.Clamp(e.y, b.y, b.y + b.h);
+      const d = Math.hypot(e.x - nx, e.y - ny);
+      if (d >= r || d < 0.0001) continue;
+      const ox = (e.x - nx) / d, oy = (e.y - ny) / d;
+      e.x = nx + ox * r; e.y = ny + oy * r;
+      const vn = e.vx * ox + e.vy * oy;
+      if (vn < 0) { e.vx -= vn * ox; e.vy -= vn * oy; }
+    }
+    for (const sg of this.segs) {
+      const hit = segHit(e.x, e.y, sg), min = r + sg.t / 2;
+      if (hit.d >= min || hit.d < 0.0001) continue;
+      const ox = (e.x - hit.x) / hit.d, oy = (e.y - hit.y) / hit.d;
+      e.x = hit.x + ox * min; e.y = hit.y + oy * min;
+      const vn = e.vx * ox + e.vy * oy;
+      if (vn < 0) { e.vx -= vn * ox; e.vy -= vn * oy; }
+    }
+  }
+
+  private renderCatcher(dt: number) {
+    const c = this.catcher;
+    if (!c) { this.world.setArrow('catcher', false); return; }
+    const target = c.lunge > 0 || (this.finished && c.eatenT < 0) ? 1 : 0;
+    c.swing += (target - c.swing) * (1 - Math.exp(-dt * 14));
+    const scale = c.eatenT >= 0 ? 1 - Math.min(1, (c.eatenT += dt) / 0.3) : 1;
+    this.world.catcher.pose({ x: c.x, y: c.y, heading: c.heading, gait: c.gait, swing: c.swing, scale });
+
+    // A red arrow at Pepper's feet points to him while he's off screen.
+    const d = Math.hypot(c.x - this.x, c.y - this.y);
+    const show = !this.finished && d > viewFor(this.shownR) * 0.45;
+    if (!show) { this.world.setArrow('catcher', false); return; }
+    const a = Math.atan2(c.y - this.y, c.x - this.x), dist = this.shownR * 2.6;
+    this.world.setArrow('catcher', true, this.x + Math.cos(a) * dist, this.y + Math.sin(a) * dist, a, this.shownR * 0.5);
   }
 
   // ---------- drawing Pepper ----------
@@ -366,10 +558,10 @@ export class GameScene extends Phaser.Scene {
 
   /** Once Pepper is big enough, an arrow on the floor points her toward the dog door. */
   private drawDoorArrow() {
-    if (this.r < DOOR_R || this.finished || !this.started) { this.world.setArrow(false); return; }
     const { door } = this.house;
+    if (!door || this.r < DOOR_R || this.finished || !this.started) { this.world.setArrow('door', false); return; }
     const a = Math.atan2(door.y - this.y, door.x - this.x), dist = this.shownR * 2.3;
-    this.world.setArrow(true, this.x + Math.cos(a) * dist, this.y + Math.sin(a) * dist, a, this.shownR * 0.45);
+    this.world.setArrow('door', true, this.x + Math.cos(a) * dist, this.y + Math.sin(a) * dist, a, this.shownR * 0.45);
   }
 }
 
@@ -384,4 +576,14 @@ function segHit(x: number, y: number, sg: Seg) {
   const t = Phaser.Math.Clamp(((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy || 1), 0, 1);
   const px = ax + dx * t, py = ay + dy * t;
   return { x: px, y: py, d: Math.hypot(x - px, y - py) };
+}
+
+/** Is x,y inside the polygon? */
+function inPoly(x: number, y: number, poly: Pt[]) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, yi] = poly[i], [xj, yj] = poly[j];
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
 }

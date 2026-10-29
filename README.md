@@ -12,6 +12,8 @@ Once GitHub Pages is turned on (Settings → Pages → Source: **GitHub Actions*
 ## How a run works
 
 1. **Indoors.** Pepper starts as a 12 cm puppy in her bed in the living room of her real house (traced from a floor plan of it). She can eat anything up to about her own size, and every bite makes her bigger and rounder. Grow to 56 cm, then head through the pantry into the garage and jump out the dog door.
+2. **Outdoors.** Out the dog door is the neighborhood: streets, yards, houses and a lot more to eat. At 80 cm the dog catcher spots Pepper and gives chase with his net. Keep eating and keep moving; if he catches her, it is off to the pound.
+3. **Turning the tables.** At 2.88 m Pepper is bigger than the dog catcher. He runs, and she can eat him.
 2. **Outdoors** *(coming next)*. The dog catcher shows up and Pepper has to dodge him while she keeps growing.
 3. **Turn the tables** *(coming later)*. Pepper gets big enough to chase down the dog catcher and eat him.
 
@@ -31,4 +33,5 @@ The code is TypeScript. The house is drawn in 3D with [three.js](https://threejs
 - `src/world3d/` draws the house, Pepper and the camera: `toon.ts` has the cel shading, ink outlines and model builder.
 - `src/game/tuning.ts` holds the feel numbers: growth rate, what Pepper can eat, speed, how far back the camera sits.
 - `src/game/house.ts` is Pepper's house, traced from a hand-drawn floor plan: walls, floors, furniture, and how many of each item get scattered.
+- `src/game/neighborhood.ts` is Phase 2: the streets, yards and houses outside, laid out fresh each run.
 - `src/scenes/` has the game itself and the HUD.

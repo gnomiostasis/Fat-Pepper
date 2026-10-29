@@ -117,6 +117,23 @@ function floorTextures(add: (key: string, c: HTMLCanvasElement) => void) {
     add('floor-garage', c);
   }
 
+  // Street: dark asphalt with grit
+  {
+    const { c, ctx } = canvas(N, N), r = rng(31);
+    ctx.fillStyle = '#5d5a57'; ctx.fillRect(0, 0, N, N);
+    for (let i = 0; i < 1400; i++) { ctx.fillStyle = r() > 0.5 ? 'rgba(0,0,0,0.18)' : 'rgba(255,255,255,0.12)'; ctx.fillRect(r() * N, r() * N, 2, 2); }
+    add('floor-asphalt', c);
+  }
+
+  // Sidewalk and driveways: pale concrete slabs
+  {
+    const { c, ctx } = canvas(N, N), r = rng(17);
+    ctx.fillStyle = '#d8d1c2'; ctx.fillRect(0, 0, N, N);
+    for (let i = 0; i < 900; i++) { ctx.fillStyle = r() > 0.5 ? 'rgba(35,26,20,0.08)' : 'rgba(255,255,255,0.25)'; ctx.fillRect(r() * N, r() * N, 2, 2); }
+    ctx.fillStyle = 'rgba(35,26,20,0.25)'; ctx.fillRect(0, 0, N, 3); ctx.fillRect(0, 0, 3, N);
+    add('floor-sidewalk', c);
+  }
+
   // Outside: grass with boomerangs, peeking past the walls
   {
     const { c, ctx } = canvas(N, N), r = rng(7);
