@@ -134,6 +134,17 @@ export class ModelBuilder {
     return this.add(new THREE.ConeGeometry(r, h, 16), color, x, y0 + h / 2, z, o);
   }
 
+  /** A wheel standing upright, facing along z (rotate it with `ry`). */
+  wheel(x: number, y: number, z: number, R: number, t: number, color: string, o?: PartOpts) {
+    return this.add(new THREE.TorusGeometry(R, t, 8, 20), color, x, y, z, o);
+  }
+
+  /** A four-sided roof or pyramid over a w x d footprint centred on x,z. */
+  pyramid(x: number, z: number, w: number, d: number, y0: number, h: number, color: string, o?: PartOpts) {
+    const g = new THREE.ConeGeometry(Math.SQRT1_2, h, 4).rotateY(Math.PI / 4);
+    return this.add(g, color, x, y0 + h / 2, z, { sx: w, sz: d, ...o });
+  }
+
   /** A cone centred at x,y,z, pointing wherever the rotation sends +y. */
   coneAt(x: number, y: number, z: number, r: number, h: number, color: string, o?: PartOpts) {
     return this.add(new THREE.ConeGeometry(r, h, 16), color, x, y, z, o);
@@ -141,6 +152,9 @@ export class ModelBuilder {
 
   /** Merged paint geometry, and the outline shell with smoothed normals so corners stay closed. */
   build() {
+    // Merging needs every part indexed or every part not; extrusions never are.
+    if (this.fills.some((g) => !g.index)) this.fills = this.fills.map((g) => (g.index ? g.toNonIndexed() : g));
+    if (this.inks.some((g) => !g.index)) this.inks = this.inks.map((g) => (g.index ? g.toNonIndexed() : g));
     const fill = mergeGeometries(this.fills)!;
     let line: THREE.BufferGeometry | null = null;
     if (this.inks.length) {

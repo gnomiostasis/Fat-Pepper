@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { PAL, hexNum } from '../art/palette';
 import { DOOR_R, START_R, formatSize } from '../game/tuning';
-import { EV, RunStats } from './events';
+import { EV, Goal, RunStats } from './events';
 
 const DISPLAY = '"Lilita One", "Arial Rounded MT Bold", sans-serif';
 const BODY = '"Nunito", "Segoe UI", system-ui, sans-serif';
@@ -21,6 +21,7 @@ export class UIScene extends Phaser.Scene {
   private overlay?: Phaser.GameObjects.Container;
   private feed: FeedLine[] = [];
   private r = START_R;
+  private goal: Goal = { from: START_R, to: DOOR_R, label: 'Dog door at', reached: 'Dog door: OPEN!' };
 
   constructor() {
     super('ui');
@@ -29,6 +30,7 @@ export class UIScene extends Phaser.Scene {
   create() {
     this.feed = [];
     this.r = START_R;
+    this.goal = { from: START_R, to: DOOR_R, label: 'Dog door at', reached: 'Dog door: OPEN!' };
 
     this.panel = this.add.graphics();
     this.sizeLabel = this.add.text(0, 0, 'PEPPER', { fontFamily: DISPLAY, fontSize: '14px', color: PAL.rust }).setLetterSpacing(2);
@@ -45,11 +47,12 @@ export class UIScene extends Phaser.Scene {
     const onEat = (name: string) => this.addFeed(name);
     const onToast = (msg: string) => this.toast(msg);
     const onDone = (s: RunStats) => this.showFinish(s);
-    bus.on(EV.size, onSize); bus.on(EV.eat, onEat); bus.on(EV.toast, onToast); bus.on(EV.done, onDone);
+    const onGoal = (g: Goal) => { this.goal = g; this.drawHud(); };
+    bus.on(EV.size, onSize); bus.on(EV.eat, onEat); bus.on(EV.toast, onToast); bus.on(EV.done, onDone); bus.on(EV.goal, onGoal);
     const onResize = () => this.layout();
     this.scale.on('resize', onResize);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-      bus.off(EV.size, onSize); bus.off(EV.eat, onEat); bus.off(EV.toast, onToast); bus.off(EV.done, onDone);
+      bus.off(EV.size, onSize); bus.off(EV.eat, onEat); bus.off(EV.toast, onToast); bus.off(EV.done, onDone); bus.off(EV.goal, onGoal);
       this.scale.off('resize', onResize);
     });
 
@@ -80,9 +83,10 @@ export class UIScene extends Phaser.Scene {
     this.sizeLabel.setPosition(x + 16, y + 12);
     this.sizeText.setText(formatSize(this.r)).setPosition(x + 14, y + 26);
 
-    const pct = Math.min(1, (this.r - START_R) / (DOOR_R - START_R));
-    const open = this.r >= DOOR_R;
-    this.doorLabel.setText(open ? 'Dog door: OPEN!' : `Dog door at ${formatSize(DOOR_R)}`).setPosition(x + 16, y + 72);
+    const g0 = this.goal;
+    const pct = Math.max(0, Math.min(1, (this.r - g0.from) / (g0.to - g0.from)));
+    const open = this.r >= g0.to;
+    this.doorLabel.setText(open ? g0.reached : `${g0.label} ${formatSize(g0.to)}`).setPosition(x + 16, y + 72);
     const bx = x + 16, by = y + 90, bw = pw - 32, bh = 8;
     this.bar.clear();
     this.bar.fillStyle(hexNum(PAL.paper)).fillRoundedRect(bx, by, bw, bh, 4);
@@ -143,7 +147,7 @@ export class UIScene extends Phaser.Scene {
   private showStart() {
     this.showCard(
       'Fat Pepper',
-      'Pepper is a tiny puppy with a big appetite. Eat anything smaller than you, grow, and get big enough to jump out the dog door.',
+      'Pepper is a tiny puppy with a big appetite. Eat anything smaller than you, grow big enough to jump out the dog door, then eat your way around the neighborhood. Watch out for the dog catcher!',
       'Move with the arrow keys or WASD, or hold the mouse or your finger where Pepper should go.',
       'Start',
       () => this.game.events.emit(EV.start),
@@ -152,11 +156,14 @@ export class UIScene extends Phaser.Scene {
 
   private showFinish(s: RunStats) {
     const m = Math.floor(s.seconds / 60), sec = Math.floor(s.seconds % 60).toString().padStart(2, '0');
+    const won = s.outcome === 'ate-catcher';
     this.showCard(
-      'Pepper got out!',
-      `She squeezed through the dog door at ${formatSize(s.r)} after eating ${s.eaten} things in ${m}:${sec}.`,
-      'The outdoors, the dog catcher and powerups come next.',
-      'Play again',
+      won ? 'Pepper ate the dog catcher!' : 'Gotcha!',
+      won
+        ? `At ${formatSize(s.r)} she gulped him down, net and all, after eating ${s.eaten} things in ${m}:${sec}.`
+        : `The dog catcher netted Pepper at ${formatSize(s.r)}, after she ate ${s.eaten} things in ${m}:${sec}. Off to the pound!`,
+      won ? 'Powerups and eating whole buildings come next.' : 'Keep moving and keep eating: he speeds up as you grow.',
+      won ? 'Play again' : 'Try again',
       () => {
         this.scene.get('game').scene.restart();
         this.scene.restart();

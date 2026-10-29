@@ -2,12 +2,11 @@ import * as THREE from 'three';
 import type { ItemDef } from '../art/items';
 import { PAL } from '../art/palette';
 import { FLOOR_TILE_WORLD, floorCanvases } from '../art/textures';
-import type { HouseLayout, Seg } from '../game/house';
+import type { Level, Seg } from '../game/level';
+import { Catcher3D } from './catcher3d';
 import { Dog3D, DogPose } from './dog3d';
 import { ModelBuilder, ink, inkResolution, inkedMesh, paint } from './toon';
 
-/** Walls are cut down so the camera can see into every room. */
-export const WALL_H = 32;
 const COUNTER_H = 26;
 /** Camera pitch: 90° would be straight down. */
 const TILT = (62 * Math.PI) / 180;
@@ -44,6 +43,7 @@ interface Anim {
 export class World3D {
   readonly renderer: THREE.WebGLRenderer;
   readonly dog = new Dog3D();
+  readonly catcher = new Catcher3D();
   private scene = new THREE.Scene();
   private camera = new THREE.PerspectiveCamera(FOV, 1, 1, 10000);
   private sun = new THREE.DirectionalLight(0xffffff, 1.6);
@@ -54,7 +54,8 @@ export class World3D {
   private wobbles = new Map<Placed, number>();
   private flap = new THREE.Group();
   private flapAngle = 0;
-  private arrow: THREE.Mesh;
+  /** Floor arrows near Pepper: one to the dog door, one warning where the dog catcher is. */
+  private arrows: Record<'door' | 'catcher', THREE.Mesh>;
   private camX = 0;
   private camY = 0;
   private view = 150;
@@ -78,15 +79,18 @@ export class World3D {
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
     this.sun.shadow.bias = -0.0004;
-    this.scene.add(this.sun, this.sun.target, this.root, this.dog.root);
+    this.scene.add(this.sun, this.sun.target, this.root, this.dog.root, this.catcher.root);
 
-    // Arrow toward the dog door, lying on the floor
-    const shape = new THREE.Shape([new THREE.Vector2(1, 0), new THREE.Vector2(-0.6, 0.8), new THREE.Vector2(-0.6, -0.8)]);
-    const tri = new THREE.ExtrudeGeometry(shape, { depth: 0.15, bevelEnabled: false });
-    tri.rotateX(-Math.PI / 2);
-    this.arrow = inkedMesh(new ModelBuilder().add(tri, PAL.mustard, 0, 0, 0).build());
-    this.arrow.visible = false;
-    this.scene.add(this.arrow);
+    const arrow = (color: string) => {
+      const shape = new THREE.Shape([new THREE.Vector2(1, 0), new THREE.Vector2(-0.6, 0.8), new THREE.Vector2(-0.6, -0.8)]);
+      const tri = new THREE.ExtrudeGeometry(shape, { depth: 0.15, bevelEnabled: false });
+      tri.rotateX(-Math.PI / 2);
+      const m = inkedMesh(new ModelBuilder().add(tri, color, 0, 0, 0).build());
+      m.visible = false;
+      this.scene.add(m);
+      return m;
+    };
+    this.arrows = { door: arrow(PAL.mustard), catcher: arrow(PAL.collar) };
 
     this.resize();
     window.addEventListener('resize', () => this.resize());
@@ -102,8 +106,8 @@ export class World3D {
 
   // ---------- building ----------
 
-  /** Clears the last run and builds the house fresh. */
-  build(house: HouseLayout) {
+  /** Clears the last level and builds this one fresh. */
+  build(house: Level) {
     // Free last run's GPU memory, but keep the item models: they're the same every run.
     const keep = new Set<THREE.BufferGeometry>();
     for (const m of this.models.values()) { keep.add(m.fill); if (m.line) keep.add(m.line); }
@@ -150,35 +154,73 @@ export class World3D {
       this.root.add(mesh);
     });
 
-    // Walls, kitchen counter, front door, stairs
+    // Walls (or fences), kitchen counter, front door, stairs
+    const WALL_H = house.wallStyle.height;
     const walls = new ModelBuilder();
     const slab = (sg: Seg, t: number, y0: number, h: number, color: string, extend = true) => {
       const [ax, ay] = sg.a, [bx, by] = sg.b, len = Math.hypot(bx - ax, by - ay);
       walls.add(new THREE.BoxGeometry(len + (extend ? t : 0), h, t), color, (ax + bx) / 2, y0 + h / 2, (ay + by) / 2,
         { ry: -Math.atan2(by - ay, bx - ax) });
     };
-    for (const sg of house.walls) slab(sg, sg.t, 0, WALL_H, PAL.teal);
+    for (const sg of house.walls) slab(sg, sg.t, 0, WALL_H, house.wallStyle.color);
     // The counter bends, so its pieces meet at round posts instead of overlapping
-    for (const sg of house.counters) {
-      slab(sg, sg.t - 6, 0, COUNTER_H - 3, PAL.tealLight, false);
-      slab(sg, sg.t, COUNTER_H - 3, 3, PAL.white, false);
-    }
-    const joints = [house.counters[0].a, ...house.counters.map((sg) => sg.b)];
-    for (const [x, y] of joints) {
-      walls.cyl(x, y, (house.counters[0].t - 6) / 2, 0, COUNTER_H - 3, PAL.tealLight, { ink: false });
-      walls.cyl(x, y, house.counters[0].t / 2, COUNTER_H - 3, 3, PAL.white, { ink: false });
+    if (house.counters.length) {
+      const ct = house.counters[0].t;
+      for (const sg of house.counters) {
+        slab(sg, ct - 6, 0, COUNTER_H - 3, PAL.tealLight, false);
+        slab(sg, ct, COUNTER_H - 3, 3, PAL.white, false);
+      }
+      for (const [x, y] of [house.counters[0].a, ...house.counters.map((sg) => sg.b)]) {
+        walls.cyl(x, y, (ct - 6) / 2, 0, COUNTER_H - 3, PAL.tealLight, { ink: false });
+        walls.cyl(x, y, ct / 2, COUNTER_H - 3, 3, PAL.white, { ink: false });
+      }
     }
     const fd = house.frontDoor;
-    slab(fd, fd.t - 4, 0, WALL_H - 2, PAL.wood, false);
-    walls.ball(fd.a[0] + (fd.b[0] - fd.a[0]) * 0.8, WALL_H * 0.45, fd.a[1] + fd.t / 2, 2.6, PAL.mustard);
-    const st = house.stairs, steps = 9, dz = st.h / steps;
-    for (let i = 0; i < steps; i++) {
-      walls.box(st.x + st.w / 2, st.y + st.h - (i + 0.5) * dz, st.w, dz, 0, 6 + i * 4.5, i % 2 ? PAL.wood : PAL.woodLight);
+    if (fd) {
+      slab(fd, fd.t - 4, 0, WALL_H - 2, PAL.wood, false);
+      walls.ball(fd.a[0] + (fd.b[0] - fd.a[0]) * 0.8, WALL_H * 0.45, fd.a[1] + fd.t / 2, 2.6, PAL.mustard);
     }
-    this.root.add(inkedMesh(walls.build()));
+    const st = house.stairs;
+    if (st) {
+      const steps = 9, dz = st.h / steps;
+      for (let i = 0; i < steps; i++) {
+        walls.box(st.x + st.w / 2, st.y + st.h - (i + 0.5) * dz, st.w, dz, 0, 6 + i * 4.5, i % 2 ? PAL.wood : PAL.woodLight);
+      }
+    }
+    // Paint on the ground
+    for (const m of house.marks) walls.box(m.box.x + m.box.w / 2, m.box.y + m.box.h / 2, m.box.w, m.box.h, 0, 0.6, m.color, { ink: false });
+    if (house.walls.length || house.counters.length || fd || st || house.marks.length) this.root.add(inkedMesh(walls.build()));
+
+    // Buildings: solid walls with a roof slab on top
+    if (house.buildings.length) {
+      const bb = new ModelBuilder();
+      for (const bd of house.buildings) {
+        const xs = bd.poly.map((p) => p[0]), ys = bd.poly.map((p) => p[1]);
+        const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+        const isRect = bd.poly.length === 4 && bd.poly.every(([x, y]) => (x === x0 || x === x1) && (y === y0 || y === y1));
+        if (isRect) {
+          // A house: walls, a door and windows, under a hip roof with eaves
+          const w = x1 - x0, d = y1 - y0, cx = (x0 + x1) / 2, cz = (y0 + y1) / 2;
+          bb.box(cx, cz, w, d, 0, bd.height, bd.wall).pyramid(cx, cz, w + 80, d + 80, bd.height, Math.min(w, d) * 0.32, bd.roof);
+          for (const side of [-1, 1]) {
+            const z = cz + side * (d / 2 + 1);
+            for (let i = 0; i < 3; i++) bb.box(x0 + w * (0.2 + i * 0.3), z, 110, 2, bd.height * 0.4, bd.height * 0.35, PAL.navy, { ink: false });
+            bb.box(cx, z, 100, 3, 0, bd.height * 0.7, PAL.woodDark, { ink: false });
+          }
+          for (const side of [-1, 1]) bb.box(cx + side * (w / 2 + 1), cz, 2, 110, bd.height * 0.4, bd.height * 0.35, PAL.navy, { ink: false });
+        } else {
+          const shape = new THREE.Shape(bd.poly.map(([x, y]) => new THREE.Vector2(x, -y)));
+          const body = new THREE.ExtrudeGeometry(shape, { depth: bd.height, bevelEnabled: false }).rotateX(-Math.PI / 2);
+          const roof = new THREE.ExtrudeGeometry(shape, { depth: 30, bevelEnabled: false }).rotateX(-Math.PI / 2);
+          bb.add(body, bd.wall, 0, 0, 0).add(roof, bd.roof, 0, bd.height, 0);
+        }
+      }
+      this.root.add(inkedMesh(bb.build()));
+    }
 
     // Welcome mat and the dog door's flap
-    const { door, wallThickness: T } = house;
+    const door = house.door, T = house.wallThickness;
+    if (!door) return;
     const mat = new THREE.Mesh(new THREE.PlaneGeometry(34, 60).rotateX(-Math.PI / 2), paint({ map: this.matTexture() }));
     mat.position.set(door.x - 27, 0.8, door.y);
     mat.receiveShadow = true;
@@ -281,12 +323,13 @@ export class World3D {
     this.anims.push({ t: 0, dur: 1.3, step: (k) => { this.flapAngle = 1.25 * Math.sin(Math.min(1, k * 1.6) * Math.PI * 0.5) * (k < 0.7 ? 1 : (1 - k) / 0.3); } });
   }
 
-  setArrow(show: boolean, x = 0, y = 0, angle = 0, size = 1) {
-    this.arrow.visible = show;
+  setArrow(which: 'door' | 'catcher', show: boolean, x = 0, y = 0, angle = 0, size = 1) {
+    const a = this.arrows[which];
+    a.visible = show;
     if (!show) return;
-    this.arrow.position.set(x, 1, y);
-    this.arrow.rotation.y = -angle;
-    this.arrow.scale.set(size, 1, size);
+    a.position.set(x, 1, y);
+    a.rotation.y = -angle;
+    a.scale.set(size, 1, size);
   }
 
   posePepper(p: DogPose) {
@@ -360,7 +403,7 @@ export class World3D {
       else { this.wobbles.set(t, next); this.place(t, 0.18 * Math.sin((next / 0.14) * Math.PI)); }
     }
     this.flap.rotation.z = this.flapAngle;
-    if (this.arrow.visible) this.arrow.scale.multiplyScalar(1 + 0.08 * Math.sin(this.time * 6));
+    for (const a of Object.values(this.arrows)) if (a.visible) a.scale.multiplyScalar(1 + 0.08 * Math.sin(this.time * 6));
     this.placeCamera();
     this.renderer.render(this.scene, this.camera);
   }

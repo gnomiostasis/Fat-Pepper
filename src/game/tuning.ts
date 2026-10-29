@@ -28,3 +28,14 @@ export function formatSize(r: number) {
   if (cm < 100) return `${cm.toFixed(cm < 20 ? 1 : 0)} cm`;
   return `${(cm / 100).toFixed(2)} m`;
 }
+
+/** Phase 2: Pepper's size when the dog catcher spots her and gives chase. */
+export const CATCHER_R = 40;
+/** The dog catcher's height, which is what Pepper has to outgrow to eat him. */
+export const CATCHER_SIZE = 180;
+/** Pepper's size when she can finally eat the dog catcher. */
+export const CATCHER_EAT_R = CATCHER_SIZE / EAT_RATIO;
+/** His walking speed in cm/s; he speeds up to keep pace as Pepper grows. */
+export const CATCHER_SPEED = 330;
+/** His collision radius in cm. */
+export const CATCHER_RAD = 35;

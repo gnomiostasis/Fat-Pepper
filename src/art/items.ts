@@ -125,6 +125,65 @@ export const ITEMS: ItemDef[] = [
     b.box(0, 0, 26, 26, 0, 22, PAL.woodLight).box(0, 0, 26.4, 4, 21.9, 0.5, PAL.paper, flat).box(0, 0, 0.6, 26.2, 22, 0.3, PAL.wood, flat);
   } },
 
+  // ---- outside: yards, sidewalks and streets ----
+  { id: 'frisbee', name: 'frisbee', size: 25, w: 24, h: 24, model(b) {
+    b.cyl(0, 0, 11.5, 0, 2, PAL.orange).ring(0, 2, 0, 9, 0.6, PAL.rust, flat);
+  } },
+  { id: 'newspaper', name: 'newspaper', size: 30, w: 30, h: 12, model(b) {
+    b.rod(0, 5, 0, 5, 28, 'x', PAL.paper).rod(0, 5, 0, 5.3, 3, 'x', PAL.orange, flat);
+  } },
+  { id: 'gnome', name: 'garden gnome', size: 40, w: 20, h: 20, model(b) {
+    b.cyl(0, 0, 7, 0, 12, PAL.sky, { r2: 8 }).ball(0, 15, 0, 5, PAL.bread).coneAt(0, 13.5, -3, 4, 7, PAL.white, { rx: Math.PI });
+    b.coneAt(0, 22, 0, 5, 10, PAL.collar).ball(0, 15, -5, 1.6, PAL.pink, flat);
+  } },
+  { id: 'hydrant', name: 'fire hydrant', size: 45, w: 20, h: 20, model(b) {
+    b.cyl(0, 0, 9, 0, 2, PAL.collar).cyl(0, 0, 6.5, 2, 18, PAL.collar).ball(0, 20, 0, 6.5, PAL.collar, { sy: 0.8 });
+    b.rod(0, 13, 0, 2.5, 18, 'x', PAL.collar).cyl(0, 0, 1.5, 24, 2, PAL.mustard);
+  } },
+  { id: 'flamingo', name: 'lawn flamingo', size: 70, w: 20, h: 30, model(b) {
+    b.cyl(-1, 4, 0.5, 0, 20, PAL.ink).cyl(1, 4, 0.5, 0, 20, PAL.ink);
+    b.ball(0, 23, 3, 6, PAL.pink, { sz: 1.4 }).rod(0, 30, -4, 1.3, 10, 'z', PAL.pink, { rx: 1.0 }).ball(0, 35, -8, 2.8, PAL.pink);
+    b.coneAt(0, 34, -11.5, 1.2, 3, PAL.ink, { rx: -Math.PI / 2 });
+  } },
+  { id: 'mailbox', name: 'mailbox', size: 60, w: 14, h: 30, model(b) {
+    b.box(0, 4, 3, 3, 0, 22, PAL.wood).rod(0, 26, 0, 6, 24, 'z', PAL.navy).box(5.5, 4, 1, 2, 26, 9, PAL.collar);
+  } },
+  { id: 'trashcan', name: 'trash can', size: 80, w: 26, h: 26, model(b) {
+    b.cyl(0, 0, 11, 0, 26, PAL.grey, { r2: 10 }).cyl(0, 0, 12, 26, 2, PAL.greyLight).box(0, 0, 6, 1.6, 28, 1.4, PAL.ink);
+  } },
+  { id: 'bush', name: 'bush', size: 120, w: 30, h: 30, model(b) {
+    for (const [x, z, r, c] of [[0, 0, 10, PAL.lettuce], [8, 4, 7, PAL.avocadoDark], [-8, 3, 7, PAL.lettuce], [2, -8, 7, PAL.avocadoDark], [-4, 9, 6, PAL.lettuce]] as const) {
+      b.ball(x, r * 0.85, z, r, c);
+    }
+  } },
+  { id: 'lawnchair', name: 'lawn chair', size: 90, w: 20, h: 32, model(b) {
+    b.box(-9, 0, 1.2, 30, 0, 6, PAL.greyLight).box(9, 0, 1.2, 30, 0, 6, PAL.greyLight);
+    for (let i = 0; i < 7; i++) b.box(0, -13 + i * 4, 17, 3.4, 5, 1, i % 2 ? PAL.white : PAL.teal, flat);
+    b.box(0, -14, 18, 2, 6, 12, PAL.teal);
+  } },
+  { id: 'bbq', name: 'barbecue grill', size: 100, w: 24, h: 24, model(b) {
+    for (const a of [0, 2.1, 4.2]) b.cyl(Math.cos(a) * 6, Math.sin(a) * 6, 0.8, 0, 16, PAL.greyLight);
+    b.ball(0, 20, 0, 11, PAL.dogBlack, { sy: 0.8 }).box(0, 0, 4, 1.5, 28.5, 1.5, PAL.greyLight);
+  } },
+  { id: 'doghouse', name: 'doghouse', size: 130, w: 30, h: 30, model(b) {
+    b.box(0, 0, 26, 26, 0, 18, PAL.orange).pyramid(0, 0, 32, 32, 18, 12, PAL.woodDark);
+    b.box(0, 13.1, 10, 0.4, 2, 12, PAL.ink, flat).box(0, 13.3, 8, 0.4, 15, 2, PAL.white, flat);
+  } },
+  { id: 'bike', name: 'bicycle', size: 170, w: 32, h: 12, model(b) {
+    b.wheel(-10, 6, 0, 5.5, 0.9, PAL.ink).wheel(10, 6, 0, 5.5, 0.9, PAL.ink);
+    b.rod(0, 8, 0, 0.8, 18, 'x', PAL.collar).rod(-3, 10, 0, 0.8, 11, 'x', PAL.collar, { rz: Math.PI / 2 + 0.6 });
+    b.box(-4, 0, 4, 2.5, 13, 1, PAL.ink).box(9, 0, 1, 9, 14, 1, PAL.greyLight);
+  } },
+  { id: 'kiddiepool', name: 'kiddie pool', size: 180, w: 32, h: 32, model(b) {
+    b.ring(0, 2.4, 0, 13.5, 2.4, PAL.sky).cyl(0, 0, 13.5, 0, 3.6, PAL.white, flat).cyl(0, 0, 12.5, 0.2, 3.7, PAL.tealLight, flat);
+    b.ball(4, 4.2, -3, 2.4, PAL.yellow);
+  } },
+  { id: 'bench', name: 'park bench', size: 180, w: 32, h: 10, model(b) {
+    for (const x of [-12, 12]) b.box(x, 0, 1.5, 9, 0, 7, PAL.ink);
+    for (let i = 0; i < 3; i++) b.box(0, -3 + i * 2.6, 32, 2, 7, 1, PAL.woodLight);
+    b.box(0, -4.5, 32, 1, 8, 6, PAL.woodLight);
+  } },
+
   // ---- furniture: obstacles for now, dinner later ----
   { id: 'sofa', name: 'sofa', size: 200, w: 32, h: 14, furniture: true, model(b) {
     b.box(0, 0.5, 32, 13, 0, 6, PAL.rust).box(0, -5.5, 32, 3, 0, 12, PAL.rust);
@@ -194,6 +253,12 @@ export const ITEMS: ItemDef[] = [
     b.box(0, 0, 32, 11, 11, 1.5, PAL.woodDark);
     for (const [x, z] of [[-14.5, -4], [14.5, -4], [-14.5, 4], [14.5, 4]]) b.box(x, z, 2, 2, 0, 11, PAL.woodDark);
     b.box(-8, -1, 8, 5, 12.5, 4, PAL.collar).box(-8, -1, 6, 1, 16.5, 0.8, PAL.ink).box(6, 0, 5, 4, 12.5, 3, PAL.grey);
+  } },
+  { id: 'tree', name: 'tree', size: 450, w: 32, h: 32, furniture: true, model(b) {
+    b.cyl(0, 0, 2, 0, 9, PAL.woodDark, { r2: 2.6 });
+    for (const [x, z, y, r, c] of [[0, 0, 15, 11, PAL.lettuce], [7, 5, 12, 8, PAL.avocadoDark], [-8, 4, 13, 8, PAL.lettuce], [3, -8, 13, 8, PAL.avocadoDark], [-5, -6, 17, 7, PAL.lettuce]] as const) {
+      b.ball(x, y, z, r, c);
+    }
   } },
   { id: 'dogbed', name: "Pepper's bed", size: 80, w: 30, h: 30, furniture: true, model(b) {
     b.ring(0, 2.5, 0, 11.5, 3, PAL.orange, { sy: 0.9 }).cyl(0, 0, 11, 0, 2, PAL.cream, flat).box(0, 13, 6, 1.6, 1, 3, PAL.white, flat);
