@@ -5,7 +5,7 @@ export const START_R = 6;
 /** Pepper can eat anything whose longest side is up to this many times her radius. */
 export const EAT_RATIO = 1.25;
 /** How much of an item's footprint turns into Pepper (r² += GROW_K · (size/2)²). */
-export const GROW_K = 0.5;
+export const GROW_K = 0.2;
 /** Radius Pepper needs to jump out of the dog door. */
 export const DOOR_R = 28;
 
