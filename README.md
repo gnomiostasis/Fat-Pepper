@@ -14,10 +14,8 @@ Once GitHub Pages is turned on (Settings → Pages → Source: **GitHub Actions*
 1. **Indoors.** Pepper starts as a 12 cm puppy in her bed in the living room of her real house (traced from a floor plan of it). She can eat anything up to about her own size, and every bite makes her bigger and rounder. Grow to 56 cm, then head through the pantry into the garage and jump out the dog door.
 2. **Outdoors.** Out the dog door is the neighborhood: streets, yards, houses and a lot more to eat. At 80 cm the dog catcher spots Pepper and gives chase with his net. Keep eating and keep moving; if he catches her, it is off to the pound.
 3. **Turning the tables.** At 2.88 m Pepper is bigger than the dog catcher. He runs, and she can eat him.
-2. **Outdoors** *(coming next)*. The dog catcher shows up and Pepper has to dodge him while she keeps growing.
-3. **Turn the tables** *(coming later)*. Pepper gets big enough to chase down the dog catcher and eat him.
 
-Powerups at size milestones, a generated house and neighbourhood, sound and a title screen are on the way.
+Powerups at size milestones, the real neighborhood map, eating whole buildings, sound and a title screen are on the way.
 
 ## Develop
 
