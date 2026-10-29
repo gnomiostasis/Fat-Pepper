@@ -19,8 +19,8 @@ export const speedFor = (r: number) => 95 * Math.pow(r / START_R, 0.85);
 /** 0 = skinny puppy, approaching 1 as she gets enormous. Rises quickly early so the chub shows. */
 export const fatFor = (r: number) => Math.min(1, Math.max(0, 1 - Math.exp(-Math.log(r / START_R) * 0.55)));
 
-/** Camera zoom so Pepper stays about the same size on screen. */
-export const zoomFor = (r: number, viewMin: number) => (viewMin / 150) * Math.pow(START_R / r, 0.85);
+/** How many cm of house the camera shows across the screen's short side, so Pepper stays about the same size on screen. */
+export const viewFor = (r: number) => 105 * Math.pow(r / START_R, 0.85);
 
 /** Pepper's size as shown to the player: her width, in cm or m. */
 export function formatSize(r: number) {

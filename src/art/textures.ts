@@ -1,23 +1,10 @@
 import Phaser from 'phaser';
-import { drawDog, drawDogPaw, drawDogTail } from './dog';
-import { ITEMS } from './items';
 import { PAL, darken, lighten } from './palette';
-import { Pen } from './pen';
 
-/** Canvas pixels per local unit for item textures. */
-export const ITEM_K = 8;
-/** Canvas pixels per local unit for Pepper's textures. */
-export const DOG_K = 5;
-/** Pepper is pre-drawn at this many fatness steps. */
-export const DOG_FAT_STEPS = 12;
-/** World units covered by one floor tile texture. */
+/** World units (cm) covered by one floor tile texture. */
 export const FLOOR_TILE_WORLD = 64;
 const FLOOR_TILE_PX = 256;
 
-export const dogKey = (step: number) => `dog-${step}`;
-export const itemKey = (id: string) => `item-${id}`;
-/** Where the tail texture's hinge sits, as a fraction of the texture size. */
-export const TAIL_ORIGIN = { x: 10 / 30, y: 6 / 30 };
 /** The comic words that pop up when Pepper takes a big bite. */
 export const CHOMP_WORDS = ['CHOMP!', 'NOM!', 'GULP!', 'MUNCH!'];
 export const chompKey = (i: number) => `chomp-${i}`;
@@ -33,36 +20,22 @@ function rng(seed: number) {
   return () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; };
 }
 
+/** The HUD's textures: film grain, vignette and the comic bite words. */
 export function makeTextures(scene: Phaser.Scene) {
-  const tex = scene.textures;
-
-  for (let i = 0; i < DOG_FAT_STEPS; i++) {
-    const L = 120, { c, ctx } = canvas(L * DOG_K, L * DOG_K);
-    drawDog(new Pen(ctx, DOG_K, c.width / 2, c.height / 2), i / (DOG_FAT_STEPS - 1));
-    tex.addCanvas(dogKey(i), c);
-  }
-  {
-    const { c, ctx } = canvas(12 * DOG_K, 12 * DOG_K);
-    drawDogPaw(new Pen(ctx, DOG_K, c.width / 2, c.height / 2));
-    tex.addCanvas('dog-paw', c);
-  }
-  {
-    const { c, ctx } = canvas(30 * DOG_K, 30 * DOG_K);
-    drawDogTail(new Pen(ctx, DOG_K, c.width * TAIL_ORIGIN.x, c.height * TAIL_ORIGIN.y));
-    tex.addCanvas('dog-tail', c);
-  }
-
-  for (const d of ITEMS) {
-    const pad = 6, { c, ctx } = canvas((d.w + pad) * ITEM_K, (d.h + pad) * ITEM_K);
-    d.draw(new Pen(ctx, ITEM_K, c.width / 2, c.height / 2));
-    tex.addCanvas(itemKey(d.id), c);
-  }
-
-  floorTextures(scene);
   overlayTextures(scene);
 }
 
-function floorTextures(scene: Phaser.Scene) {
+let floors: Record<string, HTMLCanvasElement> | null = null;
+/** Floor patterns for the 3D house, drawn once. */
+export function floorCanvases() {
+  if (!floors) {
+    floors = {};
+    floorTextures((key, c) => { floors![key] = c; });
+  }
+  return floors;
+}
+
+function floorTextures(add: (key: string, c: HTMLCanvasElement) => void) {
   const N = FLOOR_TILE_PX;
 
   // Kitchen: mustard and cream checkerboard linoleum
@@ -74,7 +47,7 @@ function floorTextures(scene: Phaser.Scene) {
     }
     ctx.strokeStyle = 'rgba(35,26,20,0.12)'; ctx.lineWidth = 2;
     for (let i = 0; i <= 4; i++) { ctx.beginPath(); ctx.moveTo(i * q, 0); ctx.lineTo(i * q, N); ctx.moveTo(0, i * q); ctx.lineTo(N, i * q); ctx.stroke(); }
-    scene.textures.addCanvas('floor-kitchen', c);
+    add('floor-kitchen', c);
   }
 
   // Living room: avocado shag carpet with starbursts
@@ -92,7 +65,7 @@ function floorTextures(scene: Phaser.Scene) {
         ctx.beginPath(); ctx.moveTo(sx + Math.cos(t) * 4, sy + Math.sin(t) * 4); ctx.lineTo(sx + Math.cos(t) * R, sy + Math.sin(t) * R); ctx.stroke();
       }
     }
-    scene.textures.addCanvas('floor-carpet', c);
+    add('floor-carpet', c);
   }
 
   // Dining room, piano room and entry: warm wood planks
@@ -108,7 +81,7 @@ function floorTextures(scene: Phaser.Scene) {
     for (let i = 0; i <= 4; i++) ctx.fillRect(0, i * plank - 1, N, 2);
     ctx.strokeStyle = 'rgba(138,82,38,0.25)'; ctx.lineWidth = 2;
     for (let i = 0; i < 14; i++) { const y = r() * N, x = r() * N; ctx.beginPath(); ctx.moveTo(x, y); ctx.quadraticCurveTo(x + 30, y + 4, x + 60, y); ctx.stroke(); }
-    scene.textures.addCanvas('floor-wood', c);
+    add('floor-wood', c);
   }
 
   // Office: teal carpet with little diamonds
@@ -120,7 +93,7 @@ function floorTextures(scene: Phaser.Scene) {
     for (const [x, y] of [[64, 64], [192, 192], [192, 64], [64, 192]]) {
       ctx.beginPath(); ctx.moveTo(x, y - 9); ctx.lineTo(x + 6, y); ctx.lineTo(x, y + 9); ctx.lineTo(x - 6, y); ctx.fill();
     }
-    scene.textures.addCanvas('floor-office', c);
+    add('floor-office', c);
   }
 
   // Bathroom: pink and white little square tiles
@@ -132,7 +105,7 @@ function floorTextures(scene: Phaser.Scene) {
     }
     ctx.strokeStyle = 'rgba(35,26,20,0.14)'; ctx.lineWidth = 2;
     for (let i = 0; i <= 8; i++) { ctx.beginPath(); ctx.moveTo(i * q, 0); ctx.lineTo(i * q, N); ctx.moveTo(0, i * q); ctx.lineTo(N, i * q); ctx.stroke(); }
-    scene.textures.addCanvas('floor-bath', c);
+    add('floor-bath', c);
   }
 
   // Garage: speckled concrete with an expansion joint
@@ -141,7 +114,7 @@ function floorTextures(scene: Phaser.Scene) {
     ctx.fillStyle = PAL.greyLight; ctx.fillRect(0, 0, N, N);
     for (let i = 0; i < 1200; i++) { ctx.fillStyle = r() > 0.5 ? 'rgba(35,26,20,0.12)' : 'rgba(255,255,255,0.25)'; ctx.fillRect(r() * N, r() * N, 2, 2); }
     ctx.fillStyle = 'rgba(35,26,20,0.18)'; ctx.fillRect(0, 0, N, 2); ctx.fillRect(0, 0, 2, N);
-    scene.textures.addCanvas('floor-garage', c);
+    add('floor-garage', c);
   }
 
   // Outside: grass with boomerangs, peeking past the walls
@@ -154,7 +127,7 @@ function floorTextures(scene: Phaser.Scene) {
       ctx.save(); ctx.translate(x, y); ctx.rotate(a); ctx.beginPath();
       ctx.moveTo(-s, 0); ctx.quadraticCurveTo(0, -s * 1.2, s, 0); ctx.quadraticCurveTo(0, -s * 0.45, -s, 0); ctx.fill(); ctx.restore();
     }
-    scene.textures.addCanvas('floor-grass', c);
+    add('floor-grass', c);
   }
 }
 
