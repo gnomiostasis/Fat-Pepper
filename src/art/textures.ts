@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { drawDog } from './dog';
+import { drawDog, drawDogPaw, drawDogTail } from './dog';
 import { ITEMS } from './items';
 import { PAL, darken, lighten } from './palette';
 import { Pen } from './pen';
@@ -16,6 +16,11 @@ const FLOOR_TILE_PX = 256;
 
 export const dogKey = (step: number) => `dog-${step}`;
 export const itemKey = (id: string) => `item-${id}`;
+/** Where the tail texture's hinge sits, as a fraction of the texture size. */
+export const TAIL_ORIGIN = { x: 10 / 30, y: 6 / 30 };
+/** The comic words that pop up when Pepper takes a big bite. */
+export const CHOMP_WORDS = ['CHOMP!', 'NOM!', 'GULP!', 'MUNCH!'];
+export const chompKey = (i: number) => `chomp-${i}`;
 
 function canvas(w: number, h: number) {
   const c = document.createElement('canvas');
@@ -35,6 +40,16 @@ export function makeTextures(scene: Phaser.Scene) {
     const L = 120, { c, ctx } = canvas(L * DOG_K, L * DOG_K);
     drawDog(new Pen(ctx, DOG_K, c.width / 2, c.height / 2), i / (DOG_FAT_STEPS - 1));
     tex.addCanvas(dogKey(i), c);
+  }
+  {
+    const { c, ctx } = canvas(12 * DOG_K, 12 * DOG_K);
+    drawDogPaw(new Pen(ctx, DOG_K, c.width / 2, c.height / 2));
+    tex.addCanvas('dog-paw', c);
+  }
+  {
+    const { c, ctx } = canvas(30 * DOG_K, 30 * DOG_K);
+    drawDogTail(new Pen(ctx, DOG_K, c.width * TAIL_ORIGIN.x, c.height * TAIL_ORIGIN.y));
+    tex.addCanvas('dog-tail', c);
   }
 
   for (const d of ITEMS) {
@@ -80,6 +95,55 @@ function floorTextures(scene: Phaser.Scene) {
     scene.textures.addCanvas('floor-carpet', c);
   }
 
+  // Dining room, piano room and entry: warm wood planks
+  {
+    const { c, ctx } = canvas(N, N), r = rng(11), plank = N / 4;
+    for (let i = 0; i < 4; i++) {
+      ctx.fillStyle = i % 2 ? PAL.woodLight : lighten(PAL.woodLight, 0.12);
+      ctx.fillRect(0, i * plank, N, plank);
+      const cut = (i * 97) % N;
+      ctx.fillStyle = 'rgba(35,26,20,0.35)'; ctx.fillRect(cut, i * plank, 2, plank);
+    }
+    ctx.fillStyle = 'rgba(35,26,20,0.3)';
+    for (let i = 0; i <= 4; i++) ctx.fillRect(0, i * plank - 1, N, 2);
+    ctx.strokeStyle = 'rgba(138,82,38,0.25)'; ctx.lineWidth = 2;
+    for (let i = 0; i < 14; i++) { const y = r() * N, x = r() * N; ctx.beginPath(); ctx.moveTo(x, y); ctx.quadraticCurveTo(x + 30, y + 4, x + 60, y); ctx.stroke(); }
+    scene.textures.addCanvas('floor-wood', c);
+  }
+
+  // Office: teal carpet with little diamonds
+  {
+    const { c, ctx } = canvas(N, N), r = rng(5);
+    ctx.fillStyle = PAL.tealLight; ctx.fillRect(0, 0, N, N);
+    for (let i = 0; i < 700; i++) { ctx.fillStyle = r() > 0.5 ? 'rgba(20,60,50,0.15)' : 'rgba(255,250,220,0.12)'; ctx.fillRect(r() * N, r() * N, 2, 3); }
+    ctx.fillStyle = lighten(PAL.tealLight, 0.3);
+    for (const [x, y] of [[64, 64], [192, 192], [192, 64], [64, 192]]) {
+      ctx.beginPath(); ctx.moveTo(x, y - 9); ctx.lineTo(x + 6, y); ctx.lineTo(x, y + 9); ctx.lineTo(x - 6, y); ctx.fill();
+    }
+    scene.textures.addCanvas('floor-office', c);
+  }
+
+  // Bathroom: pink and white little square tiles
+  {
+    const { c, ctx } = canvas(N, N), q = N / 8;
+    for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
+      ctx.fillStyle = (x + y) % 2 ? PAL.pink : PAL.white;
+      ctx.fillRect(x * q, y * q, q, q);
+    }
+    ctx.strokeStyle = 'rgba(35,26,20,0.14)'; ctx.lineWidth = 2;
+    for (let i = 0; i <= 8; i++) { ctx.beginPath(); ctx.moveTo(i * q, 0); ctx.lineTo(i * q, N); ctx.moveTo(0, i * q); ctx.lineTo(N, i * q); ctx.stroke(); }
+    scene.textures.addCanvas('floor-bath', c);
+  }
+
+  // Garage: speckled concrete with an expansion joint
+  {
+    const { c, ctx } = canvas(N, N), r = rng(23);
+    ctx.fillStyle = PAL.greyLight; ctx.fillRect(0, 0, N, N);
+    for (let i = 0; i < 1200; i++) { ctx.fillStyle = r() > 0.5 ? 'rgba(35,26,20,0.12)' : 'rgba(255,255,255,0.25)'; ctx.fillRect(r() * N, r() * N, 2, 2); }
+    ctx.fillStyle = 'rgba(35,26,20,0.18)'; ctx.fillRect(0, 0, N, 2); ctx.fillRect(0, 0, 2, N);
+    scene.textures.addCanvas('floor-garage', c);
+  }
+
   // Outside: grass with boomerangs, peeking past the walls
   {
     const { c, ctx } = canvas(N, N), r = rng(7);
@@ -112,6 +176,22 @@ function overlayTextures(scene: Phaser.Scene) {
     ctx.fillStyle = v; ctx.fillRect(0, 0, N, N);
     scene.textures.addCanvas('vignette', c);
   }
+  // Comic starbursts for big bites
+  CHOMP_WORDS.forEach((word, i) => {
+    const W = 260, H = 170, { c, ctx } = canvas(W, H), n = 14;
+    ctx.beginPath();
+    for (let j = 0; j <= n * 2; j++) {
+      const a = (j / (n * 2)) * Math.PI * 2, rr = j % 2 ? 0.72 : 1;
+      const x = W / 2 + Math.cos(a) * (W / 2 - 8) * rr, y = H / 2 + Math.sin(a) * (H / 2 - 8) * rr;
+      if (j === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.save(); ctx.translate(6, -4); ctx.fillStyle = PAL.yellow; ctx.fill(); ctx.restore();
+    ctx.lineWidth = 6; ctx.lineJoin = 'round'; ctx.strokeStyle = PAL.ink; ctx.stroke();
+    ctx.font = '400 46px "Lilita One", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.lineWidth = 8; ctx.strokeStyle = PAL.ink; ctx.strokeText(word, W / 2, H / 2 + 2);
+    ctx.fillStyle = PAL.orange; ctx.fillText(word, W / 2, H / 2 + 2);
+    scene.textures.addCanvas(chompKey(i), c);
+  });
   // Small round particle for chomp crumbs
   {
     const { c, ctx } = canvas(16, 16);

@@ -79,6 +79,11 @@ export const ITEMS: ItemDef[] = [
     g.fill([[-13, 9], [13, 9], [0, -11]], PAL.bread); g.fill([[-9, 6.5], [9, 6.5], [0, -6.5]], PAL.breadIn, { plain: true });
   } },
 
+  { id: 'can', name: 'soup can', size: 10, w: 20, h: 20, draw(g) {
+    g.fill(circ(0, 0, 9), PAL.greyLight); g.line(circ(0, 0, 7), PAL.grey, 1, true);
+    g.fill(circ(0, 0, 4), PAL.orange, { plain: true });
+  } },
+
   // ---- medium stuff ----
   { id: 'banana', name: 'banana', size: 18, w: 30, h: 16, draw(g) {
     const p: Pt[] = [];
@@ -106,6 +111,11 @@ export const ITEMS: ItemDef[] = [
     g.fill(circ(0, -9, 3.2), PAL.white);
   } },
 
+  { id: 'shoe', name: 'sneaker', size: 26, w: 16, h: 30, draw(g) {
+    g.fill(ell(0, 0, 7, 14), PAL.sky); g.fill(ell(0, 5, 4.5, 6), PAL.navy, { plain: true });
+    for (const y of [-8, -4.5, -1]) g.line([[-3.5, y], [3.5, y]], PAL.white, 1.4);
+  } },
+
   // ---- big stuff (needed to reach dog door size) ----
   { id: 'plant', name: 'potted plant', size: 30, w: 30, h: 30, draw(g) {
     g.fill(circ(0, 0, 9), PAL.rust);
@@ -126,6 +136,20 @@ export const ITEMS: ItemDef[] = [
     g.fill(rrect(-15, -11, 30, 22, 4), PAL.woodLight);
     g.fill(ell(-5, -2, 7, 5), PAL.sky); g.fill(ell(4, 1, 7, 5), PAL.orange); g.fill(ell(-1, 5, 5, 3), PAL.white);
     for (const x of [-10, 10]) g.line([[x, -11], [x, 11]], PAL.wood, 1.2);
+  } },
+
+  { id: 'duck', name: 'rubber duck', size: 9, w: 22, h: 20, draw(g) {
+    g.fill(ell(-1, 2, 9, 7), PAL.yellow); g.fill(circ(5, -4, 5), PAL.yellow);
+    g.fill(ell(10, -3, 3, 1.6), PAL.orange); g.fill(circ(6, -5.5, 0.9), I, { plain: true });
+  } },
+  { id: 'toiletpaper', name: 'toilet paper', size: 12, w: 22, h: 22, draw(g) {
+    g.fill(circ(0, 0, 10), PAL.white); g.fill(circ(0, 0, 3.5), PAL.woodLight);
+    g.line(circ(0, 0, 7), PAL.greyLight, 0.6, true);
+  } },
+  { id: 'box', name: 'cardboard box', size: 34, w: 30, h: 30, draw(g) {
+    g.fill(rect(-13, -13, 26, 26), PAL.woodLight);
+    g.fill(rect(-13, -2, 26, 4), PAL.paper, { plain: true });
+    g.line([[0, -13], [0, 13]], PAL.wood, 1);
   } },
 
   // ---- furniture: obstacles for now, dinner later ----
@@ -168,6 +192,55 @@ export const ITEMS: ItemDef[] = [
   } },
   { id: 'chair', name: 'chair', size: 45, w: 30, h: 30, furniture: true, draw(g) {
     g.fill(rrect(-13, -13, 26, 26, 3), PAL.mustard); g.fill(rect(-13, -13, 26, 6), PAL.mustardDark);
+  } },
+  { id: 'roundtable', name: 'breakfast table', size: 90, w: 30, h: 30, furniture: true, draw(g) {
+    g.fill(circ(0, 0, 14), PAL.woodLight);
+    g.fill(circ(-4, -3, 4), PAL.white); g.fill(circ(-4, -3, 2.2), PAL.yellow, { plain: true });
+    g.fill(circ(5, 4, 2.5), PAL.orange);
+  } },
+  { id: 'piano', name: 'piano', size: 150, w: 32, h: 13, furniture: true, draw(g) {
+    g.fill(rrect(-16, -6.5, 32, 13, 1.5), PAL.dogBlack);
+    g.fill(rect(-14, 2.2, 28, 3.6), PAL.white, { plain: true });
+    for (let i = 0; i < 13; i++) if (i % 7 !== 2 && i % 7 !== 6) g.fill(rect(-13.2 + i * 2.1, 2.2, 1, 2), PAL.ink, { plain: true });
+    g.fill(rect(-6, -4.5, 12, 3), PAL.paper, { plain: true });
+  } },
+  { id: 'desk', name: 'desk', size: 140, w: 32, h: 16, furniture: true, draw(g) {
+    g.fill(rect(-16, -8, 32, 16), PAL.wood);
+    g.fill(rrect(-5, -5, 10, 7, 1), PAL.greyLight); g.fill(rect(-4, -4, 8, 4.5), PAL.navy, { plain: true });
+    g.fill(rect(7, -5, 6, 8), PAL.white); g.fill(circ(-11, 2, 2.2), PAL.orange);
+  } },
+  { id: 'car', name: 'car', size: 360, w: 32, h: 14, furniture: true, draw(g) {
+    for (const [x, y] of [[-9, -7], [9, -7], [-9, 7], [9, 7]]) g.fill(rrect(x - 3, y - 1.4, 6, 2.8, 1), PAL.ink, { plain: true });
+    g.fill(rrect(-16, -6.5, 32, 13, 5), PAL.teal);
+    g.fill(rrect(-6, -5, 12, 10, 3), PAL.tealLight);
+    g.fill(rect(6, -4.5, 3, 9), PAL.paper); g.fill(rect(-9.5, -4.2, 2.5, 8.4), PAL.paper);
+    g.fill(circ(15, -4, 1.3), PAL.yellow); g.fill(circ(15, 4, 1.3), PAL.yellow);
+    g.line([[-16, 0], [-6, 0]], PAL.white, 0.9); g.line([[6, 0], [16, 0]], PAL.white, 0.9);
+  } },
+  { id: 'workbench', name: 'workbench', size: 180, w: 32, h: 11, furniture: true, draw(g) {
+    g.fill(rect(-16, -5.5, 32, 11), PAL.woodDark);
+    g.fill(rect(-12, -3.5, 8, 5), PAL.collar); g.fill(rect(-11, -2.5, 6, 1), PAL.ink, { plain: true });
+    g.fill(rect(4, -2, 5, 4), PAL.grey); g.line([[11, -3], [14, 2]], PAL.greyLight, 0.8);
+  } },
+  { id: 'toilet', name: 'toilet', size: 70, w: 21, h: 30, furniture: true, draw(g) {
+    g.fill(rrect(-10, -15, 20, 9, 2), PAL.white);
+    g.fill(ell(0, 4, 9, 11), PAL.white); g.fill(ell(0, 5, 5.5, 7.5), PAL.sky);
+    g.fill(rect(-3, -12.5, 6, 2), PAL.greyLight, { plain: true });
+  } },
+  { id: 'bathtub', name: 'bathtub', size: 140, w: 32, h: 15, furniture: true, draw(g) {
+    g.fill(rrect(-16, -7.5, 32, 15, 3), PAL.pink);
+    g.fill(rrect(-13.5, -5, 27, 10, 4), PAL.white);
+    g.fill(rrect(-12, -3.6, 24, 7.2, 3.4), PAL.sky, { plain: true });
+    g.fill(circ(11.5, 0, 1), PAL.greyLight); g.fill(circ(-8, -1, 1.6), PAL.white, { plain: true });
+  } },
+  { id: 'sink', name: 'bathroom sink', size: 90, w: 32, h: 18, furniture: true, draw(g) {
+    g.fill(rect(-16, -9, 32, 18), PAL.pink);
+    g.fill(ell(0, 1, 7.5, 5.5), PAL.white); g.fill(ell(0, 1.5, 5, 3.5), PAL.sky, { plain: true });
+    g.fill(rect(-1, -7, 2, 4), PAL.greyLight); g.fill(rect(9, -5, 5, 7), PAL.mustard);
+  } },
+  { id: 'dogbed', name: "Pepper's bed", size: 80, w: 30, h: 30, furniture: true, draw(g) {
+    g.fill(circ(0, 0, 14), PAL.orange); g.fill(circ(0, 0, 10), PAL.cream);
+    g.fill(rect(-3.5, 6, 7, 2), PAL.white, { plain: true });
   } },
 ];
 
