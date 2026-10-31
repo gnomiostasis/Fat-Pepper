@@ -25,10 +25,10 @@ npm run dev      # local server with hot reload
 npm run build    # type-check and build to dist/
 ```
 
-The code is TypeScript. The house is drawn in 3D with [three.js](https://threejs.org) in an "ink and paint" cartoon style (cel shading and ink outlines, 60s colours), and [Phaser 3](https://phaser.io) runs the game rules and the HUD on top. All art is built in code at start-up (no image or model files):
+The code is TypeScript. The house is drawn in 3D with [three.js](https://threejs.org) in a "garden pastel" style (flat pastel colours, no outlines, soft shadows, a cozy English-village feel), and [Phaser 3](https://phaser.io) runs the game rules and the HUD on top. All art is built in code at start-up (no image or model files):
 
 - `src/art/items.ts` lists every item and piece of furniture with its 3D model, built from simple shapes.
-- `src/world3d/` draws the house, Pepper and the camera: `toon.ts` has the cel shading, ink outlines and model builder.
+- `src/world3d/` draws the house, Pepper and the camera: `toon.ts` has the soft flat shading and model builder.
 - `src/game/tuning.ts` holds the feel numbers: growth rate, what Pepper can eat, speed, how far back the camera sits.
 - `src/game/house.ts` is Pepper's house, traced from a hand-drawn floor plan: walls, floors, furniture, and how many of each item get scattered.
 - `src/game/neighborhood.ts` is Phase 2: the streets, yards and houses outside, laid out fresh each run.
