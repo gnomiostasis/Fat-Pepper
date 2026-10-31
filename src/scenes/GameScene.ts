@@ -7,7 +7,7 @@ import type { Box, Level, Pt, Seg } from '../game/level';
 import { buildNeighborhood } from '../game/neighborhood';
 import {
   CATCHER_EAT_R, CATCHER_R, CATCHER_RAD, CATCHER_SIZE, CATCHER_SPEED, DOOR_R, START_R,
-  canEat, fatFor, formatSize, grownRadius, speedFor, viewFor,
+  canEat, fatFor, formatSize, grownRadius, OUTDOOR_ZOOM, speedFor, viewFor,
 } from '../game/tuning';
 import { Placed, World3D, getWorld } from '../world3d/World3D';
 import { EV, Goal, RunStats } from './events';
@@ -48,6 +48,8 @@ interface Catcher {
 export class GameScene extends Phaser.Scene {
   private house!: Level;
   private outside = false;
+  /** Extra camera pull-back: 1 indoors, easing up to OUTDOOR_ZOOM once outside. */
+  private zoom = 1;
   private catcher: Catcher | null = null;
   /** Building edges, solid like walls but drawn as part of the building. */
   private buildingPolys: Pt[][] = [];
@@ -90,7 +92,7 @@ export class GameScene extends Phaser.Scene {
     this.vx = this.vy = 0; this.heading = -Math.PI / 2; this.walkPhase = 0; this.chomp = 0;
     this.biteT = -1; this.happy = 0; this.lastPop = 0;
     this.started = false; this.finished = false; this.eatenCount = 0; this.tooSmallUntil = 0;
-    this.outside = false; this.catcher = null;
+    this.outside = false; this.catcher = null; this.zoom = 1;
 
     // The level is drawn in 3D underneath; this scene keeps the rules and the comic pops.
     this.world = getWorld();
@@ -134,7 +136,7 @@ export class GameScene extends Phaser.Scene {
     for (const spot of level.furniture) this.addFurniture(spot.id, spot.x, spot.y, spot.rot);
     this.scatterItems();
     this.world.addThings([...decals, ...this.things]);
-    this.world.follow(this.x, this.y, viewFor(this.shownR), 0, true);
+    this.world.follow(this.x, this.y, this.viewCm(), 0, true);
     this.renderDog(0);
   }
 
@@ -218,6 +220,11 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  /** How many cm the camera shows across the screen's short side right now. */
+  private viewCm() {
+    return viewFor(this.shownR) * this.zoom;
+  }
+
   // ---------- the loop ----------
 
   update(time: number, delta: number) {
@@ -228,7 +235,8 @@ export class GameScene extends Phaser.Scene {
     this.renderDog(dt);
     this.renderCatcher(dt);
     this.drawDoorArrow();
-    this.world.follow(this.x, this.y, viewFor(this.shownR), dt);
+    this.zoom += ((this.outside ? OUTDOOR_ZOOM : 1) - this.zoom) * (1 - Math.exp(-dt * 2));
+    this.world.follow(this.x, this.y, this.viewCm(), dt);
     this.world.render(dt);
   }
 
@@ -526,7 +534,7 @@ export class GameScene extends Phaser.Scene {
 
     // A red arrow at Pepper's feet points to him while he's off screen.
     const d = Math.hypot(c.x - this.x, c.y - this.y);
-    const show = !this.finished && d > viewFor(this.shownR) * 0.45;
+    const show = !this.finished && d > this.viewCm() * 0.45;
     if (!show) { this.world.setArrow('catcher', false); return; }
     const a = Math.atan2(c.y - this.y, c.x - this.x), dist = this.shownR * 2.6;
     this.world.setArrow('catcher', true, this.x + Math.cos(a) * dist, this.y + Math.sin(a) * dist, a, this.shownR * 0.5);

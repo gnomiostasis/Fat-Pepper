@@ -22,6 +22,9 @@ export const fatFor = (r: number) => Math.min(1, Math.max(0, 1 - Math.exp(-Math.
 /** How many cm of house the camera shows across the screen's short side, so Pepper stays about the same size on screen. */
 export const viewFor = (r: number) => 105 * Math.pow(r / START_R, 0.85);
 
+/** Outdoors the camera pulls back this much further, so there's more neighborhood on screen. */
+export const OUTDOOR_ZOOM = 1.35;
+
 /** Pepper's size as shown to the player: her width, in cm or m. */
 export function formatSize(r: number) {
   const cm = r * 2;
