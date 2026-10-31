@@ -2,13 +2,14 @@ import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { PAL } from '../art/palette';
 
-// The "ink and paint" look: three-step cel shading plus ink outlines that stay
-// a steady width on screen however far the camera pulls back.
+// The garden pastel look: flat colour with one gentle shade step and no outlines.
+// The ink outline shader is kept, switched off by OUTLINES, in case a later look wants it.
+const OUTLINES = false;
 
 let gradient: THREE.DataTexture | null = null;
 function toonGradient() {
   if (!gradient) {
-    gradient = new THREE.DataTexture(new Uint8Array([105, 185, 255]), 3, 1, THREE.RedFormat);
+    gradient = new THREE.DataTexture(new Uint8Array([200, 255]), 2, 1, THREE.RedFormat);
     gradient.minFilter = gradient.magFilter = THREE.NearestFilter;
     gradient.needsUpdate = true;
   }
@@ -157,7 +158,7 @@ export class ModelBuilder {
     if (this.inks.some((g) => !g.index)) this.inks = this.inks.map((g) => (g.index ? g.toNonIndexed() : g));
     const fill = mergeGeometries(this.fills)!;
     let line: THREE.BufferGeometry | null = null;
-    if (this.inks.length) {
+    if (OUTLINES && this.inks.length) {
       const shells = this.inks.map((g) => {
         const s = new THREE.BufferGeometry();
         s.setAttribute('position', g.attributes.position.clone());

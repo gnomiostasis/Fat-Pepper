@@ -8,9 +8,8 @@ const BODY = '"Nunito", "Segoe UI", system-ui, sans-serif';
 
 interface FeedLine { name: string; count: number; text: Phaser.GameObjects.Text; at: number }
 
-/** HUD, film grain, and the start and finish cards, drawn on top of the game. */
+/** HUD and the start and finish cards, drawn on top of the game. */
 export class UIScene extends Phaser.Scene {
-  private grain!: Phaser.GameObjects.TileSprite;
   private vignette!: Phaser.GameObjects.Image;
   private panel!: Phaser.GameObjects.Graphics;
   private sizeLabel!: Phaser.GameObjects.Text;
@@ -40,7 +39,6 @@ export class UIScene extends Phaser.Scene {
     this.toastBox = this.add.container(0, 0).setAlpha(0);
 
     this.vignette = this.add.image(0, 0, 'vignette').setOrigin(0);
-    this.grain = this.add.tileSprite(0, 0, 10, 10, 'grain').setOrigin(0);
 
     const bus = this.game.events;
     const onSize = (r: number) => { this.r = r; this.drawHud(); };
@@ -60,16 +58,9 @@ export class UIScene extends Phaser.Scene {
     this.showStart();
   }
 
-  update(_time: number, delta: number) {
-    // Let the grain crawl a little, like old film.
-    this.grain.tilePositionX += delta * 0.37;
-    this.grain.tilePositionY -= delta * 0.53;
-  }
-
   private layout() {
     const { width: w, height: h } = this.scale;
     this.vignette.setDisplaySize(w, h);
-    this.grain.setSize(w, h);
     this.drawHud();
     this.feed.forEach((f, i) => f.text.setPosition(20, h - 40 - i * 24));
     this.toastBox.setPosition(w / 2, 96);
@@ -91,7 +82,6 @@ export class UIScene extends Phaser.Scene {
     this.bar.clear();
     this.bar.fillStyle(hexNum(PAL.paper)).fillRoundedRect(bx, by, bw, bh, 4);
     if (pct > 0) this.bar.fillStyle(hexNum(open ? PAL.teal : PAL.mustard)).fillRoundedRect(bx, by, Math.max(bh, bw * pct), bh, 4);
-    this.bar.lineStyle(2, hexNum(PAL.ink)).strokeRoundedRect(bx, by, bw, bh, 4);
   }
 
   private addFeed(name: string) {
@@ -105,7 +95,7 @@ export class UIScene extends Phaser.Scene {
       return;
     }
     const text = this.add.text(20, h - 40, name, {
-      fontFamily: DISPLAY, fontSize: '20px', color: PAL.cream, stroke: PAL.ink, strokeThickness: 5,
+      fontFamily: DISPLAY, fontSize: '20px', color: PAL.white, stroke: PAL.avocadoDark, strokeThickness: 5,
     }).setOrigin(0, 0.5);
     const line = { name, count: 1, text, at: now };
     this.feed.unshift(line);
@@ -176,7 +166,7 @@ export class UIScene extends Phaser.Scene {
     this.overlay = c;
     const dim = this.add.rectangle(0, 0, 10, 10, hexNum(PAL.ink), 0.45).setOrigin(0);
     const g = this.add.graphics();
-    const tTitle = this.add.text(0, 0, title, { fontFamily: DISPLAY, fontSize: '52px', color: PAL.orange, stroke: PAL.ink, strokeThickness: 6 }).setOrigin(0.5, 0);
+    const tTitle = this.add.text(0, 0, title, { fontFamily: DISPLAY, fontSize: '52px', color: PAL.orange }).setOrigin(0.5, 0);
     const tBody = this.add.text(0, 0, body, { fontFamily: BODY, fontSize: '18px', color: PAL.ink, align: 'center', lineSpacing: 4 }).setOrigin(0.5, 0);
     const tSmall = this.add.text(0, 0, small, { fontFamily: BODY, fontSize: '14px', color: PAL.rust, align: 'center', fontStyle: '700' }).setOrigin(0.5, 0);
     const btnG = this.add.graphics();
@@ -223,8 +213,8 @@ export class UIScene extends Phaser.Scene {
   }
 }
 
-/** A 60s cartoon panel: flat color printed a bit off its ink outline. */
+/** A garden pastel panel: flat colour over a soft drop shadow, no outline. */
 function card(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number, color: string) {
-  g.fillStyle(hexNum(color)).fillRoundedRect(x + 3, y - 2, w, h, 12);
-  g.lineStyle(3, hexNum(PAL.ink)).strokeRoundedRect(x, y, w, h, 12);
+  g.fillStyle(0x345c32, 0.2).fillRoundedRect(x + 4, y + 6, w, h, 14);
+  g.fillStyle(hexNum(color)).fillRoundedRect(x, y, w, h, 14);
 }

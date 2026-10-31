@@ -46,7 +46,7 @@ export class World3D {
   readonly catcher = new Catcher3D();
   private scene = new THREE.Scene();
   private camera = new THREE.PerspectiveCamera(FOV, 1, 1, 10000);
-  private sun = new THREE.DirectionalLight(0xffffff, 1.6);
+  private sun = new THREE.DirectionalLight(0xffffff, 1.2);
   private root = new THREE.Group();
   private models = new Map<string, ReturnType<ModelBuilder['build']>>();
   private kinds: Kind[] = [];
@@ -71,11 +71,11 @@ export class World3D {
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     parent.appendChild(this.renderer.domElement);
 
-    this.scene.background = new THREE.Color(PAL.avocadoDark);
-    this.scene.add(new THREE.AmbientLight(0xffffff, 1.5));
+    this.scene.background = new THREE.Color(PAL.avocado);
+    this.scene.add(new THREE.AmbientLight(0xffffff, 1.9));
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
     this.sun.shadow.bias = -0.0004;
