@@ -20,7 +20,7 @@ function rng(seed: number) {
   return () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; };
 }
 
-/** The HUD's textures: film grain, vignette and the comic bite words. */
+/** The HUD's textures: a soft vignette and the bite words. */
 export function makeTextures(scene: Phaser.Scene) {
   overlayTextures(scene);
 }
@@ -50,20 +50,13 @@ function floorTextures(add: (key: string, c: HTMLCanvasElement) => void) {
     add('floor-kitchen', c);
   }
 
-  // Living room: avocado shag carpet with starbursts
+  // Living room: soft sage carpet with a scatter of pale dots
   {
-    const { c, ctx } = canvas(N, N), r = rng(42);
-    ctx.fillStyle = PAL.avocado; ctx.fillRect(0, 0, N, N);
-    for (let i = 0; i < 900; i++) {
-      ctx.fillStyle = r() > 0.5 ? 'rgba(80,90,40,0.18)' : 'rgba(255,250,220,0.14)';
-      ctx.fillRect(r() * N, r() * N, 2, 3);
-    }
-    ctx.strokeStyle = lighten(PAL.avocado, 0.35); ctx.lineWidth = 3; ctx.lineCap = 'round';
-    for (const [sx, sy] of [[64, 70], [190, 180]]) {
-      for (let j = 0; j < 8; j++) {
-        const t = (j / 8) * Math.PI * 2, R = j % 2 ? 10 : 20;
-        ctx.beginPath(); ctx.moveTo(sx + Math.cos(t) * 4, sy + Math.sin(t) * 4); ctx.lineTo(sx + Math.cos(t) * R, sy + Math.sin(t) * R); ctx.stroke();
-      }
+    const { c, ctx } = canvas(N, N);
+    ctx.fillStyle = PAL.tealLight; ctx.fillRect(0, 0, N, N);
+    ctx.fillStyle = lighten(PAL.tealLight, 0.3);
+    for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) {
+      ctx.beginPath(); ctx.arc(x * 64 + (y % 2) * 32 + 16, y * 64 + 32, 5, 0, Math.PI * 2); ctx.fill();
     }
     add('floor-carpet', c);
   }
@@ -84,12 +77,11 @@ function floorTextures(add: (key: string, c: HTMLCanvasElement) => void) {
     add('floor-wood', c);
   }
 
-  // Office: teal carpet with little diamonds
+  // Office: powder-blue carpet with little diamonds
   {
-    const { c, ctx } = canvas(N, N), r = rng(5);
-    ctx.fillStyle = PAL.tealLight; ctx.fillRect(0, 0, N, N);
-    for (let i = 0; i < 700; i++) { ctx.fillStyle = r() > 0.5 ? 'rgba(20,60,50,0.15)' : 'rgba(255,250,220,0.12)'; ctx.fillRect(r() * N, r() * N, 2, 3); }
-    ctx.fillStyle = lighten(PAL.tealLight, 0.3);
+    const { c, ctx } = canvas(N, N);
+    ctx.fillStyle = PAL.sky; ctx.fillRect(0, 0, N, N);
+    ctx.fillStyle = lighten(PAL.sky, 0.3);
     for (const [x, y] of [[64, 64], [192, 192], [192, 64], [64, 192]]) {
       ctx.beginPath(); ctx.moveTo(x, y - 9); ctx.lineTo(x + 6, y); ctx.lineTo(x, y + 9); ctx.lineTo(x - 6, y); ctx.fill();
     }
@@ -117,56 +109,48 @@ function floorTextures(add: (key: string, c: HTMLCanvasElement) => void) {
     add('floor-garage', c);
   }
 
-  // Street: dark asphalt with grit
+  // Street: soft grey tarmac with faint patches
   {
     const { c, ctx } = canvas(N, N), r = rng(31);
-    ctx.fillStyle = '#5d5a57'; ctx.fillRect(0, 0, N, N);
-    for (let i = 0; i < 1400; i++) { ctx.fillStyle = r() > 0.5 ? 'rgba(0,0,0,0.18)' : 'rgba(255,255,255,0.12)'; ctx.fillRect(r() * N, r() * N, 2, 2); }
+    ctx.fillStyle = '#9a9ea6'; ctx.fillRect(0, 0, N, N);
+    for (let i = 0; i < 14; i++) { ctx.fillStyle = r() > 0.5 ? 'rgba(60,70,80,0.10)' : 'rgba(255,255,255,0.10)'; ctx.beginPath(); ctx.ellipse(r() * N, r() * N, 10 + r() * 16, 5 + r() * 8, 0, 0, Math.PI * 2); ctx.fill(); }
     add('floor-asphalt', c);
   }
 
-  // Sidewalk and driveways: pale concrete slabs
+  // Sidewalk and driveways: pale stone slabs
   {
     const { c, ctx } = canvas(N, N), r = rng(17);
-    ctx.fillStyle = '#d8d1c2'; ctx.fillRect(0, 0, N, N);
-    for (let i = 0; i < 900; i++) { ctx.fillStyle = r() > 0.5 ? 'rgba(35,26,20,0.08)' : 'rgba(255,255,255,0.25)'; ctx.fillRect(r() * N, r() * N, 2, 2); }
-    ctx.fillStyle = 'rgba(35,26,20,0.25)'; ctx.fillRect(0, 0, N, 3); ctx.fillRect(0, 0, 3, N);
+    ctx.fillStyle = PAL.paper; ctx.fillRect(0, 0, N, N);
+    for (let i = 0; i < 6; i++) { ctx.fillStyle = 'rgba(180,160,120,0.12)'; ctx.beginPath(); ctx.ellipse(r() * N, r() * N, 14 + r() * 14, 7 + r() * 6, r(), 0, Math.PI * 2); ctx.fill(); }
+    ctx.fillStyle = 'rgba(150,130,100,0.25)'; ctx.fillRect(0, 0, N, 3); ctx.fillRect(0, 0, 3, N);
     add('floor-sidewalk', c);
   }
 
-  // Outside: grass with boomerangs, peeking past the walls
+  // Outside: mint grass with pale patches and little tufts
   {
     const { c, ctx } = canvas(N, N), r = rng(7);
-    ctx.fillStyle = '#bcc47c'; ctx.fillRect(0, 0, N, N);
-    ctx.fillStyle = darken('#bcc47c', 0.08);
-    for (let i = 0; i < 6; i++) {
-      const x = r() * N, y = r() * N, s = 14 + r() * 10, a = r() * 6.28;
-      ctx.save(); ctx.translate(x, y); ctx.rotate(a); ctx.beginPath();
-      ctx.moveTo(-s, 0); ctx.quadraticCurveTo(0, -s * 1.2, s, 0); ctx.quadraticCurveTo(0, -s * 0.45, -s, 0); ctx.fill(); ctx.restore();
+    ctx.fillStyle = PAL.avocado; ctx.fillRect(0, 0, N, N);
+    ctx.fillStyle = lighten(PAL.avocado, 0.15);
+    for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.ellipse(r() * N, r() * N, 30 + r() * 30, 12 + r() * 12, 0, 0, Math.PI * 2); ctx.fill(); }
+    ctx.fillStyle = darken(PAL.avocado, 0.08);
+    for (let i = 0; i < 18; i++) {
+      const x = r() * N, y = r() * N;
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 3, y - 9); ctx.lineTo(x + 6, y); ctx.fill();
     }
     add('floor-grass', c);
   }
 }
 
 function overlayTextures(scene: Phaser.Scene) {
-  // Film grain, tiled over the whole screen
-  {
-    const N = 256, { c, ctx } = canvas(N, N), r = rng(99);
-    for (let i = 0; i < 2600; i++) {
-      ctx.fillStyle = r() > 0.5 ? 'rgba(60,40,20,0.10)' : 'rgba(255,245,220,0.14)';
-      ctx.fillRect(r() * N, r() * N, 1.5, 1.5);
-    }
-    scene.textures.addCanvas('grain', c);
-  }
-  // Warm vignette, stretched over the screen
+  // Faint green vignette, stretched over the screen
   {
     const N = 512, { c, ctx } = canvas(N, N);
     const v = ctx.createRadialGradient(N / 2, N / 2, N * 0.28, N / 2, N / 2, N * 0.72);
-    v.addColorStop(0, 'rgba(255,240,200,0)'); v.addColorStop(1, 'rgba(120,80,30,0.32)');
+    v.addColorStop(0, 'rgba(255,240,200,0)'); v.addColorStop(1, 'rgba(52,92,50,0.14)');
     ctx.fillStyle = v; ctx.fillRect(0, 0, N, N);
     scene.textures.addCanvas('vignette', c);
   }
-  // Comic starbursts for big bites
+  // Soft starbursts for big bites
   CHOMP_WORDS.forEach((word, i) => {
     const W = 260, H = 170, { c, ctx } = canvas(W, H), n = 14;
     ctx.beginPath();
@@ -175,10 +159,10 @@ function overlayTextures(scene: Phaser.Scene) {
       const x = W / 2 + Math.cos(a) * (W / 2 - 8) * rr, y = H / 2 + Math.sin(a) * (H / 2 - 8) * rr;
       if (j === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
     }
-    ctx.save(); ctx.translate(6, -4); ctx.fillStyle = PAL.yellow; ctx.fill(); ctx.restore();
-    ctx.lineWidth = 6; ctx.lineJoin = 'round'; ctx.strokeStyle = PAL.ink; ctx.stroke();
+    ctx.save(); ctx.translate(4, 6); ctx.fillStyle = 'rgba(52,92,50,0.2)'; ctx.fill(); ctx.restore();
+    ctx.fillStyle = PAL.yellow; ctx.fill();
     ctx.font = '400 46px "Lilita One", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.lineWidth = 8; ctx.strokeStyle = PAL.ink; ctx.strokeText(word, W / 2, H / 2 + 2);
+    ctx.fillStyle = PAL.white; ctx.fillText(word, W / 2 + 2, H / 2 + 5);
     ctx.fillStyle = PAL.orange; ctx.fillText(word, W / 2, H / 2 + 2);
     scene.textures.addCanvas(chompKey(i), c);
   });
