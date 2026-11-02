@@ -1,3 +1,5 @@
+import type { Stacks } from '../game/powerups';
+
 /** Events passed between the game and the HUD on `game.events`. */
 export const EV = {
   /** HUD → game: the player pressed start. */
@@ -12,7 +14,22 @@ export const EV = {
   done: 'fp-done',
   /** game → HUD: what Pepper is growing toward now; payload is Goal. */
   goal: 'fp-goal',
+  /** game → HUD: Pepper hit a size milestone; payload is the PowerDef[] to choose from. */
+  offer: 'fp-offer',
+  /** HUD → game: the player picked a powerup; payload is its PowerId. */
+  pick: 'fp-pick',
+  /** game → HUD: Pepper's powerups changed; payload is PowerState. */
+  powers: 'fp-powers',
 } as const;
+
+/** What the HUD shows about powerups. */
+export interface PowerState {
+  stacks: Stacks;
+  /** Radius of the next pick, or null once they're all taken. */
+  next: number | null;
+  /** Slippery Fur saves left. */
+  fur: number;
+}
 
 export interface RunStats {
   /** How the run ended. */
@@ -20,6 +37,7 @@ export interface RunStats {
   seconds: number;
   eaten: number;
   r: number;
+  stacks: Stacks;
 }
 
 /** The HUD's progress bar: from one size to the next milestone. */

@@ -308,6 +308,11 @@ export class World3D {
     });
   }
 
+  /** Something slid across the floor (the snack magnet): redraw it where it is now. */
+  move(t: Placed) {
+    this.place(t);
+  }
+
   /** A quick rock, for something Pepper bumped but is too small to eat. */
   wobble(t: Placed) {
     if (!this.wobbles.has(t)) this.wobbles.set(t, 0);
