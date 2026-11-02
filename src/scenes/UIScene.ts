@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
 import { PAL, hexNum } from '../art/palette';
+import { MILESTONES, POWER_BY_ID, PowerDef, PowerId, Stacks } from '../game/powerups';
 import { DOOR_R, START_R, formatSize } from '../game/tuning';
-import { EV, Goal, RunStats } from './events';
+import { EV, Goal, PowerState, RunStats } from './events';
 
 const DISPLAY = '"Lilita One", "Arial Rounded MT Bold", sans-serif';
 const BODY = '"Nunito", "Segoe UI", system-ui, sans-serif';
@@ -21,6 +22,10 @@ export class UIScene extends Phaser.Scene {
   private feed: FeedLine[] = [];
   private r = START_R;
   private goal: Goal = { from: START_R, to: DOOR_R, label: 'Dog door at', reached: 'Dog door: OPEN!' };
+  private powers: PowerState = { stacks: {}, next: MILESTONES[0], fur: 0 };
+  private nextLabel!: Phaser.GameObjects.Text;
+  private chips!: Phaser.GameObjects.Container;
+  private picker?: Phaser.GameObjects.Container;
 
   constructor() {
     super('ui');
@@ -30,12 +35,18 @@ export class UIScene extends Phaser.Scene {
     this.feed = [];
     this.r = START_R;
     this.goal = { from: START_R, to: DOOR_R, label: 'Dog door at', reached: 'Dog door: OPEN!' };
+    this.powers = { stacks: {}, next: MILESTONES[0], fur: 0 };
+    this.picker = undefined;
 
     this.panel = this.add.graphics();
     this.sizeLabel = this.add.text(0, 0, 'PEPPER', { fontFamily: DISPLAY, fontSize: '14px', color: PAL.rust }).setLetterSpacing(2);
     this.sizeText = this.add.text(0, 0, formatSize(START_R), { fontFamily: DISPLAY, fontSize: '40px', color: PAL.ink });
     this.doorLabel = this.add.text(0, 0, '', { fontFamily: BODY, fontSize: '13px', fontStyle: '800', color: PAL.ink });
     this.bar = this.add.graphics();
+    this.nextLabel = this.add.text(0, 0, '', {
+      fontFamily: BODY, fontSize: '13px', fontStyle: '800', color: PAL.white, stroke: PAL.avocadoDark, strokeThickness: 4,
+    });
+    this.chips = this.add.container(0, 0);
     this.toastBox = this.add.container(0, 0).setAlpha(0);
 
     this.vignette = this.add.image(0, 0, 'vignette').setOrigin(0);
@@ -46,11 +57,15 @@ export class UIScene extends Phaser.Scene {
     const onToast = (msg: string) => this.toast(msg);
     const onDone = (s: RunStats) => this.showFinish(s);
     const onGoal = (g: Goal) => { this.goal = g; this.drawHud(); };
+    const onPowers = (p: PowerState) => { this.powers = p; this.drawHud(); };
+    const onOffer = (choices: PowerDef[]) => this.showPicker(choices);
     bus.on(EV.size, onSize); bus.on(EV.eat, onEat); bus.on(EV.toast, onToast); bus.on(EV.done, onDone); bus.on(EV.goal, onGoal);
+    bus.on(EV.powers, onPowers); bus.on(EV.offer, onOffer);
     const onResize = () => this.layout();
     this.scale.on('resize', onResize);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       bus.off(EV.size, onSize); bus.off(EV.eat, onEat); bus.off(EV.toast, onToast); bus.off(EV.done, onDone); bus.off(EV.goal, onGoal);
+      bus.off(EV.powers, onPowers); bus.off(EV.offer, onOffer);
       this.scale.off('resize', onResize);
     });
 
@@ -65,6 +80,7 @@ export class UIScene extends Phaser.Scene {
     this.feed.forEach((f, i) => f.text.setPosition(20, h - 40 - i * 24));
     this.toastBox.setPosition(w / 2, 96);
     if (this.overlay) this.overlay.getData('layout')?.();
+    if (this.picker) this.picker.getData('layout')?.();
   }
 
   private drawHud() {
@@ -82,6 +98,135 @@ export class UIScene extends Phaser.Scene {
     this.bar.clear();
     this.bar.fillStyle(hexNum(PAL.paper)).fillRoundedRect(bx, by, bw, bh, 4);
     if (pct > 0) this.bar.fillStyle(hexNum(open ? PAL.teal : PAL.mustard)).fillRoundedRect(bx, by, Math.max(bh, bw * pct), bh, 4);
+
+    // Under the panel: when the next powerup comes, then a chip for each one Pepper has.
+    const p = this.powers;
+    this.nextLabel.setText(p.next ? `Next powerup at ${formatSize(p.next)}` : 'All powerups found!').setPosition(x + 4, y + ph + 12);
+    this.drawChips(x, y + ph + 36, p.stacks);
+  }
+
+  private drawChips(x0: number, y0: number, stacks: Stacks) {
+    this.chips.removeAll(true);
+    const maxW = Math.min(this.scale.width - 32, 420);
+    let x = x0, y = y0;
+    for (const [id, n] of Object.entries(stacks) as [PowerId, number][]) {
+      const def = POWER_BY_ID[id];
+      let label = n > 1 ? `${def.icon} ${def.name} ×${n}` : `${def.icon} ${def.name}`;
+      if (id === 'fur') label = `${def.icon} ${def.name} (${this.powers.fur} left)`;
+      if (id === 'treats') continue;
+      const t = this.add.text(10, 4, label, { fontFamily: BODY, fontSize: '13px', fontStyle: '800', color: PAL.ink });
+      const w = t.width + 20, h = 26;
+      if (x + w > x0 + maxW) { x = x0; y += h + 6; }
+      const g = this.add.graphics();
+      g.fillStyle(0x345c32, 0.18).fillRoundedRect(2, 3, w, h, 13);
+      g.fillStyle(hexNum(def.color)).fillRoundedRect(0, 0, w, h, 13);
+      this.chips.add(this.add.container(x, y, [g, t]));
+      x += w + 6;
+    }
+  }
+
+  // ---------- picking a powerup ----------
+
+  /** Pick 1 of 3: cards side by side (stacked on a narrow phone), click, tap or press 1-3. */
+  private showPicker(choices: PowerDef[]) {
+    this.picker?.destroy();
+    const c = this.add.container(0, 0).setDepth(90);
+    this.picker = c;
+    const dim = this.add.rectangle(0, 0, 10, 10, hexNum(PAL.ink), 0.4).setOrigin(0).setInteractive();
+    const title = this.add.text(0, 0, 'Pepper grew! Pick a powerup', {
+      fontFamily: DISPLAY, fontSize: '40px', color: PAL.cream, stroke: PAL.rust, strokeThickness: 8, align: 'center',
+    }).setOrigin(0.5, 0);
+    c.add([dim, title]);
+
+    // A short pause so a held key or tap from playing doesn't pick by accident.
+    let done = false;
+    const shownAt = performance.now();
+    const pick = (i: number) => {
+      if (done || !choices[i] || performance.now() - shownAt < 450) return;
+      done = true;
+      this.input.keyboard!.off('keydown', onKey);
+      const chosen = cards[i];
+      this.tweens.add({ targets: chosen, scale: 1.08, duration: 120, yoyo: true });
+      this.tweens.add({
+        targets: c, alpha: 0, delay: 200, duration: 200,
+        onComplete: () => { c.destroy(); if (this.picker === c) this.picker = undefined; },
+      });
+      this.game.events.emit(EV.pick, choices[i].id);
+    };
+    const onKey = (e: KeyboardEvent) => { const i = ['1', '2', '3'].indexOf(e.key); if (i >= 0) pick(i); };
+
+    const cards = choices.map((def, i) => {
+      const have = this.powers.stacks[def.id] ?? 0;
+      const card = this.add.container(0, 0);
+      const g = this.add.graphics();
+      const icon = this.add.text(0, 0, def.icon, { fontFamily: BODY, fontSize: '44px' }).setOrigin(0.5);
+      const name = this.add.text(0, 0, def.name, { fontFamily: DISPLAY, fontSize: '26px', color: PAL.ink, align: 'center' }).setOrigin(0.5, 0);
+      const lvl = this.add.text(0, 0, def.id === 'treats' ? (have ? 'Again!' : 'Right now!') : have ? `Level ${have + 1}` : 'New!', {
+        fontFamily: BODY, fontSize: '13px', fontStyle: '800', color: PAL.rust,
+      }).setOrigin(0.5, 0);
+      const blurb = this.add.text(0, 0, def.blurb(have + 1), {
+        fontFamily: BODY, fontSize: '15px', fontStyle: '700', color: PAL.ink, align: 'center', lineSpacing: 2,
+      }).setOrigin(0.5, 0);
+      const key = this.add.text(0, 0, `${i + 1}`, { fontFamily: DISPLAY, fontSize: '18px', color: PAL.cream }).setOrigin(0.5);
+      const hit = this.add.rectangle(0, 0, 10, 10, 0, 0).setOrigin(0).setInteractive({ useHandCursor: true });
+      card.add([g, icon, name, lvl, blurb, key, hit]);
+      card.setData('parts', { g, icon, name, lvl, blurb, key, hit, def });
+      hit.on('pointerover', () => this.tweens.add({ targets: card, y: card.getData('y') - 6, duration: 100 }));
+      hit.on('pointerout', () => this.tweens.add({ targets: card, y: card.getData('y'), duration: 100 }));
+      hit.on('pointerup', () => pick(i));
+      c.add(card);
+      return card;
+    });
+
+    const layout = () => {
+      const { width: w, height: h } = this.scale;
+      dim.setSize(w, h);
+      const narrow = w < 640;
+      title.setFontSize(narrow ? 28 : 40).setWordWrapWidth(w - 32);
+      const cw = narrow ? Math.min(360, w - 32) : Math.min(230, (w - 64) / 3), ch = narrow ? 120 : 270, gap = 16;
+      const totalH = narrow ? cards.length * ch + (cards.length - 1) * gap : ch;
+      const top = Math.max(title.height + 32, (h - totalH) / 2 + 20);
+      title.setPosition(w / 2, Math.max(16, top - title.height - 24));
+      cards.forEach((card, i) => {
+        const { g, icon, name, lvl, blurb, key, hit, def } = card.getData('parts');
+        const cx = narrow ? (w - cw) / 2 : w / 2 - (cards.length * cw + (cards.length - 1) * gap) / 2 + i * (cw + gap);
+        const cy = narrow ? top + i * (ch + gap) : top;
+        card.setPosition(cx, cy).setData('y', cy);
+        g.clear();
+        g.fillStyle(0x345c32, 0.25).fillRoundedRect(4, 6, cw, ch, 16);
+        g.fillStyle(hexNum(PAL.cream)).fillRoundedRect(0, 0, cw, ch, 16);
+        // A colour band for the icon: across the top, or down the left on a phone.
+        g.fillStyle(hexNum(def.color)).fillRoundedRect(0, 0, narrow ? 84 : cw, narrow ? ch : 92, narrow ? { tl: 16, bl: 16, tr: 0, br: 0 } : { tl: 16, tr: 16, bl: 0, br: 0 });
+        if (narrow) {
+          icon.setPosition(42, ch / 2);
+          name.setOrigin(0, 0).setPosition(98, 12).setFontSize(22);
+          lvl.setOrigin(1, 0).setPosition(cw - 12, 16);
+          blurb.setOrigin(0, 0).setAlign('left').setWordWrapWidth(cw - 110).setPosition(98, 44).setFontSize(14);
+          g.fillStyle(hexNum(PAL.rust)).fillCircle(16, 16, 12);
+          key.setPosition(16, 17);
+        } else {
+          icon.setPosition(cw / 2, 46);
+          name.setOrigin(0.5, 0).setPosition(cw / 2, 106).setWordWrapWidth(cw - 24).setFontSize(26);
+          lvl.setOrigin(0.5, 0).setPosition(cw / 2, 106 + name.height + 2);
+          blurb.setOrigin(0.5, 0).setAlign('center').setWordWrapWidth(cw - 32).setPosition(cw / 2, 106 + name.height + 24).setFontSize(15);
+          g.fillStyle(hexNum(PAL.rust)).fillCircle(cw / 2, ch - 24, 14);
+          key.setPosition(cw / 2, ch - 23);
+        }
+        hit.setSize(cw, ch);
+      });
+    };
+    c.setData('layout', layout);
+    layout();
+
+    c.setAlpha(0);
+    this.tweens.add({ targets: c, alpha: 1, duration: 200 });
+    cards.forEach((card, i) => {
+      const y = card.getData('y');
+      card.setY(y + 40);
+      this.tweens.add({ targets: card, y, duration: 260, delay: 60 * i, ease: 'Back.easeOut' });
+    });
+    this.input.keyboard!.on('keydown', onKey);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.input.keyboard?.off('keydown', onKey));
   }
 
   private addFeed(name: string) {
@@ -137,7 +282,7 @@ export class UIScene extends Phaser.Scene {
   private showStart() {
     this.showCard(
       'Fat Pepper',
-      'Pepper is a tiny puppy with a big appetite. Eat anything smaller than you, grow big enough to jump out the dog door, then eat your way around the neighborhood. Watch out for the dog catcher!',
+      'Pepper is a tiny puppy with a big appetite. Eat anything smaller than you, grow big enough to jump out the dog door, then eat your way around the neighborhood. Every few sizes you pick a powerup, and they stack. Watch out for the dog catcher!',
       'Move with the arrow keys or WASD, or hold the mouse or your finger where Pepper should go.',
       'Start',
       () => this.game.events.emit(EV.start),
@@ -152,13 +297,19 @@ export class UIScene extends Phaser.Scene {
       won
         ? `At ${formatSize(s.r)} she gulped him down, net and all, after eating ${s.eaten} things in ${m}:${sec}.`
         : `The dog catcher netted Pepper at ${formatSize(s.r)}, after she ate ${s.eaten} things in ${m}:${sec}. Off to the pound!`,
-      won ? 'Powerups and eating whole buildings come next.' : 'Keep moving and keep eating: he speeds up as you grow.',
+      this.buildLine(s.stacks) || (won ? 'Eating whole buildings comes next.' : 'Keep moving and keep eating: he speeds up as you grow.'),
       won ? 'Play again' : 'Try again',
       () => {
         this.scene.get('game').scene.restart();
         this.scene.restart();
       },
     );
+  }
+
+  /** "Build: Zoomies ×2, Snack Magnet" for the finish card. */
+  private buildLine(stacks: Stacks) {
+    const parts = (Object.entries(stacks) as [PowerId, number][]).map(([id, n]) => `${POWER_BY_ID[id].icon} ${POWER_BY_ID[id].name}${n > 1 ? ` ×${n}` : ''}`);
+    return parts.length ? `Build: ${parts.join(', ')}` : '';
   }
 
   private showCard(title: string, body: string, small: string, button: string, onGo: () => void) {
