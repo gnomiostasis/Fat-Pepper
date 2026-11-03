@@ -6,11 +6,16 @@ import { buildHouse } from '../game/house';
 import type { Box, Level, Pt, Seg } from '../game/level';
 import { buildNeighborhood } from '../game/neighborhood';
 import {
-  CATCHER_EAT_R, CATCHER_R, CATCHER_RAD, CATCHER_SIZE, CATCHER_SPEED, DOOR_R, START_R,
-  canEat, fatFor, formatSize, grownRadius, OUTDOOR_ZOOM, speedFor, viewFor,
+  APPETITE, JAWS, MILESTONES, POWER_BY_ID, PowerId, RUSH, RUSH_TIME, SNEAKY, STREAK, STREAK_CAP, STREAK_GAP,
+  Stacks, TONGUE, ZOOMIES, rollChoices,
+} from '../game/powerups';
+import {
+  CATCHER_R, CATCHER_RAD, CATCHER_SIZE, CATCHER_SPEED, DOOR_R, EAT_RATIO, START_R,
+  fatFor, formatSize, grownRadius, OUTDOOR_ZOOM, speedFor, viewFor,
 } from '../game/tuning';
+import { ITEMS } from '../art/items';
 import { Placed, World3D, getWorld } from '../world3d/World3D';
-import { EV, Goal, RunStats } from './events';
+import { EV, Goal, PowerState, RunStats } from './events';
 
 interface Thing extends Placed {
   /** Collision radius for loose items. */
@@ -43,6 +48,8 @@ interface Catcher {
   fleeing: boolean;
   /** Seconds since Pepper ate him, or -1. */
   eatenT: number;
+  /** Seconds he stands dazed after his net slips off Slippery Fur. */
+  stun: number;
 }
 
 export class GameScene extends Phaser.Scene {
@@ -81,6 +88,23 @@ export class GameScene extends Phaser.Scene {
   private startTime = 0;
   private tooSmallUntil = 0;
 
+  // ---- roguelike powerups ----
+  private stacks: Stacks = {};
+  /** Index of the next size milestone in MILESTONES. */
+  private milestone = 0;
+  /** Milestones passed but not picked yet (a big bite can pass two). */
+  private pendingPicks = 0;
+  /** The game is paused while the player picks a powerup. */
+  private picking = false;
+  private pickStart = 0;
+  private furLeft = 0;
+  /** Seconds Pepper can't be netted, after Slippery Fur saves her. */
+  private safeT = 0;
+  private streak = 0;
+  private lastBite = -99;
+  /** Sugar Rush boost left, in seconds. */
+  private rushT = 0;
+
   constructor() {
     super('game');
   }
@@ -93,6 +117,8 @@ export class GameScene extends Phaser.Scene {
     this.biteT = -1; this.happy = 0; this.lastPop = 0;
     this.started = false; this.finished = false; this.eatenCount = 0; this.tooSmallUntil = 0;
     this.outside = false; this.catcher = null; this.zoom = 1;
+    this.stacks = {}; this.milestone = 0; this.pendingPicks = 0; this.picking = false;
+    this.furLeft = 0; this.safeT = 0; this.streak = 0; this.lastBite = -99; this.rushT = 0;
 
     // The level is drawn in 3D underneath; this scene keeps the rules and the comic pops.
     this.world = getWorld();
@@ -107,10 +133,16 @@ export class GameScene extends Phaser.Scene {
 
     const onStart = () => { this.started = true; this.startTime = this.time.now; };
     this.game.events.on(EV.start, onStart);
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.game.events.off(EV.start, onStart));
+    const onPick = (id: PowerId) => this.takePower(id);
+    this.game.events.on(EV.pick, onPick);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.game.events.off(EV.start, onStart);
+      this.game.events.off(EV.pick, onPick);
+    });
 
     this.game.events.emit(EV.size, this.r);
     this.emitGoal();
+    this.emitPowers();
   }
 
   // ---------- setting up a level ----------
@@ -145,7 +177,7 @@ export class GameScene extends Phaser.Scene {
     let goal: Goal;
     if (!this.outside) goal = { from: START_R, to: DOOR_R, label: 'Dog door at', reached: 'Dog door: OPEN!' };
     else if (!this.catcher) goal = { from: DOOR_R, to: CATCHER_R, label: 'Dog catcher alert at', reached: 'The dog catcher is coming!' };
-    else goal = { from: CATCHER_R, to: CATCHER_EAT_R, label: 'Eat the catcher at', reached: 'Eat the dog catcher!' };
+    else goal = { from: CATCHER_R, to: this.catcherEatR(), label: 'Eat the catcher at', reached: 'Eat the dog catcher!' };
     this.game.events.emit(EV.goal, goal);
   }
 
@@ -175,7 +207,7 @@ export class GameScene extends Phaser.Scene {
       if (this.segs.some((sg) => segHit(x, y, sg).d < rad + sg.t / 2 + 3)) return false;
       if (this.things.some((o) => !o.box && o.rad > 2 && Math.hypot(o.x - x, o.y - y) < rad + o.rad + 1)) return false;
       if (this.buildingPolys.some((poly) => inPoly(x, y, poly))) return false;
-      if (!canEat(this.r, def.size)) {
+      if (!this.canEat(def.size)) {
         // Keep the start spot and the ways through clear of anything Pepper can't eat yet.
         if (Math.hypot(x - h.spawn.x, y - h.spawn.y) < rad + this.r * 6) return false;
         if (h.door && Math.hypot(x - h.door.x, y - h.door.y) < rad + 80) return false;
@@ -229,7 +261,10 @@ export class GameScene extends Phaser.Scene {
 
   update(time: number, delta: number) {
     const dt = Math.min(delta / 1000, 0.05);
-    if (this.started && !this.finished) this.step(time, dt);
+    if (this.started && !this.finished && !this.picking) {
+      this.step(time, dt);
+      if (this.pendingPicks > 0) this.offerPowers();
+    }
     this.shownR += (this.r - this.shownR) * (1 - Math.exp(-dt * 8));
     this.chomp *= Math.exp(-dt * 10);
     this.renderDog(dt);
@@ -261,7 +296,9 @@ export class GameScene extends Phaser.Scene {
     const len = Math.hypot(dx, dy);
     if (len > 0) { dx /= len; dy /= len; }
 
-    const speed = speedFor(this.r) * ease, a = 1 - Math.exp(-dt * 22);
+    this.rushT = Math.max(0, this.rushT - dt);
+    this.safeT = Math.max(0, this.safeT - dt);
+    const speed = this.topSpeed() * ease, a = 1 - Math.exp(-dt * 22);
     this.vx += (dx * speed - this.vx) * a;
     this.vy += (dy * speed - this.vy) * a;
     this.x += this.vx * dt;
@@ -271,11 +308,12 @@ export class GameScene extends Phaser.Scene {
     const b = this.house.bounds;
     this.x = Phaser.Math.Clamp(this.x, b.x + this.r, b.x + b.w - this.r);
     this.y = Phaser.Math.Clamp(this.y, b.y + this.r, b.y + b.h - this.r);
+    this.pullSnacks(dt);
     this.eatNearby();
     this.stepCatcher(dt);
 
     const v = Math.hypot(this.vx, this.vy);
-    if (v > speedFor(this.r) * 0.1) this.heading = Phaser.Math.Angle.RotateTo(this.heading, Math.atan2(this.vy, this.vx), dt * 24);
+    if (v > this.topSpeed() * 0.1) this.heading = Phaser.Math.Angle.RotateTo(this.heading, Math.atan2(this.vy, this.vx), dt * 24);
     this.walkPhase += (v / this.r) * dt * 1.4;
   }
 
@@ -321,7 +359,7 @@ export class GameScene extends Phaser.Scene {
 
     // Loose things that are still too big to eat are solid too.
     for (const t of this.things) {
-      if (t.eaten || t.box || canEat(r, t.def.size)) continue;
+      if (t.eaten || t.box || this.canEat(t.def.size)) continue;
       let ox = this.x - t.x, oy = this.y - t.y;
       const d = Math.hypot(ox, oy), min = r + t.rad * 0.85;
       if (d >= min || d < 0.0001) continue;
@@ -334,19 +372,119 @@ export class GameScene extends Phaser.Scene {
   }
 
   private eatNearby() {
-    const r = this.r;
+    const reach = this.r * (0.8 + TONGUE * this.n('tongue'));
     for (const t of this.things) {
-      if (t.eaten || !canEat(this.r, t.def.size)) continue;
+      if (t.eaten || !this.canEat(t.def.size)) continue;
       const d = t.box ? circleBoxDist(this.x, this.y, t.box) : Math.hypot(this.x - t.x, this.y - t.y) - t.rad * 0.6;
-      if (d < r * 0.8) this.eat(t);
+      // Long Tongue reaches loose snacks; furniture still needs a proper bite.
+      if (d < (t.box ? this.r * 0.8 : reach)) this.eat(t);
     }
+  }
+
+  // ---------- powerups ----------
+
+  /** How many of a powerup Pepper has. */
+  private n(id: PowerId) {
+    return this.stacks[id] ?? 0;
+  }
+
+  private canEat(size: number) {
+    return size <= this.r * (EAT_RATIO + JAWS * this.n('jaws'));
+  }
+
+  /** Pepper's size when she can eat the dog catcher, with Big Jaws counted. */
+  private catcherEatR() {
+    return CATCHER_SIZE / (EAT_RATIO + JAWS * this.n('jaws'));
+  }
+
+  private topSpeed() {
+    const rush = 1 + RUSH * this.n('rush') * Math.min(1, this.rushT / RUSH_TIME);
+    return speedFor(this.r) * (1 + ZOOMIES * this.n('zoomies')) * rush;
+  }
+
+  /** Snack Magnet: loose food nearby slides toward Pepper, stopping at walls. */
+  private pullSnacks(dt: number) {
+    const m = this.n('magnet');
+    if (!m) return;
+    const range = this.r * (2.2 + 1.4 * m), pull = speedFor(this.r) * (0.35 + 0.2 * m);
+    for (const t of this.things) {
+      if (t.eaten || t.box || !this.canEat(t.def.size)) continue;
+      const dx = this.x - t.x, dy = this.y - t.y, d = Math.hypot(dx, dy);
+      if (d > range || d < 0.001) continue;
+      const step = Math.min(d, pull * (1.2 - d / range) * dt);
+      const nx = t.x + (dx / d) * step, ny = t.y + (dy / d) * step;
+      if (this.segs.some((sg) => segHit(nx, ny, sg).d < t.rad * 0.5 + sg.t / 2)) continue;
+      t.x = nx; t.y = ny;
+      this.world.move(t);
+    }
+  }
+
+  /** Pepper passed a size milestone: pause and offer three powerups. */
+  private offerPowers() {
+    const choices = rollChoices(this.stacks);
+    if (!choices.length) { this.pendingPicks = 0; return; }
+    this.picking = true;
+    this.pickStart = this.time.now;
+    this.vx = this.vy = 0;
+    this.game.events.emit(EV.offer, choices);
+  }
+
+  private takePower(id: PowerId) {
+    if (!this.picking) return;
+    this.picking = false;
+    this.pendingPicks--;
+    // The pause doesn't count toward the run's time.
+    this.startTime += this.time.now - this.pickStart;
+    this.stacks[id] = this.n(id) + 1;
+    if (id === 'fur') this.furLeft++;
+    if (id === 'treats') this.treatRain();
+    this.game.events.emit(EV.toast, `${POWER_BY_ID[id].name}!`);
+    this.emitPowers();
+    this.emitGoal();
+  }
+
+  private emitPowers() {
+    const s: PowerState = { stacks: { ...this.stacks }, next: MILESTONES[this.milestone] ?? null, fur: this.furLeft };
+    this.game.events.emit(EV.powers, s);
+  }
+
+  /** Treat Rain: a ring of snacks sized for Pepper right now drops in around her. */
+  private treatRain() {
+    const r = this.r;
+    const snacks = ITEMS.filter((d) => !d.furniture && d.size >= r * 0.25 && d.size <= r * 0.9);
+    const pool = snacks.length ? snacks : ITEMS.filter((d) => !d.furniture && d.size <= r).slice(-4);
+    const b = this.house.bounds, added: Thing[] = [];
+    for (let i = 0; i < 18; i++) {
+      const def = pool[Math.floor(Math.random() * pool.length)];
+      const rad = (def.size / 2) * ((def.w + def.h) / 2) / Math.max(def.w, def.h);
+      for (let tries = 0; tries < 12; tries++) {
+        const a = Math.random() * Math.PI * 2, d = r * (2 + Math.random() * 4);
+        const x = this.x + Math.cos(a) * d, y = this.y + Math.sin(a) * d;
+        if (x < b.x + rad || y < b.y + rad || x > b.x + b.w - rad || y > b.y + b.h - rad) continue;
+        if (this.solids.some((s) => circleBoxDist(x, y, s) < rad + 2)) continue;
+        if (this.segs.some((sg) => segHit(x, y, sg).d < rad + sg.t / 2 + 2)) continue;
+        if (this.buildingPolys.some((poly) => inPoly(x, y, poly))) continue;
+        const t: Thing = { def, x, y, rot: Math.random() * Math.PI * 2, rad, eaten: false };
+        added.push(t);
+        break;
+      }
+    }
+    this.things.push(...added);
+    this.world.addThings(added);
   }
 
   private eat(t: Thing) {
     t.eaten = true;
     if (t.box) this.solids = this.solids.filter((b) => b !== t.box);
     const before = this.r;
-    this.r = grownRadius(this.r, t.def.size);
+    // Powerups that make each bite count for more.
+    const now = this.time.now / 1000;
+    this.streak = now - this.lastBite < STREAK_GAP ? Math.min(STREAK_CAP, this.streak + 1) : 0;
+    this.lastBite = now;
+    const boost = 1 + APPETITE * this.n('appetite') + STREAK * this.n('streak') * this.streak;
+    const gained = grownRadius(this.r, t.def.size) ** 2 - this.r * this.r;
+    this.r = Math.sqrt(this.r * this.r + gained * boost);
+    if (this.n('rush')) this.rushT = RUSH_TIME;
     this.eatenCount++;
     this.chomp = 1;
     this.biteT = 0;
@@ -364,6 +502,14 @@ export class GameScene extends Phaser.Scene {
     if (before < DOOR_R && this.r >= DOOR_R) {
       this.game.events.emit(EV.toast, 'Big enough! Head for the dog door in the garage.');
     }
+    if (this.n('streak') && this.streak >= 3 && this.streak % 3 === 0) {
+      this.game.events.emit(EV.toast, `Munch streak ×${this.streak}!`);
+    }
+    while (this.milestone < MILESTONES.length && this.r >= MILESTONES[this.milestone]) {
+      this.milestone++;
+      this.pendingPicks++;
+    }
+    if (this.pendingPicks) this.emitPowers();
   }
 
   /** A little spray of crumbs from Pepper's mouth, in screen pixels. */
@@ -418,7 +564,9 @@ export class GameScene extends Phaser.Scene {
 
   private endRun(outcome: RunStats['outcome']) {
     this.finished = true;
-    const stats: RunStats = { outcome, seconds: (this.time.now - this.startTime) / 1000, eaten: this.eatenCount, r: this.r };
+    const stats: RunStats = {
+      outcome, seconds: (this.time.now - this.startTime) / 1000, eaten: this.eatenCount, r: this.r, stacks: { ...this.stacks },
+    };
     this.time.delayedCall(1100, () => this.game.events.emit(EV.done, stats));
   }
 
@@ -431,18 +579,18 @@ export class GameScene extends Phaser.Scene {
     const [x, y] = [...spots].sort((a, b) => far(a) - far(b))[0];
     this.catcher = {
       x, y, vx: 0, vy: 0, heading: Math.atan2(this.y - y, this.x - x), gait: 0, lunge: 0, cool: 2, swing: 0,
-      detour: 0, detourAng: 0, checkT: 0, lastX: x, lastY: y, fleeing: false, eatenT: -1,
+      detour: 0, detourAng: 0, checkT: 0, lastX: x, lastY: y, fleeing: false, eatenT: -1, stun: 0,
     };
     this.world.catcher.show(true);
     this.emitGoal();
-    this.game.events.emit(EV.toast, `Uh oh! The dog catcher spotted Pepper. Keep eating, and don't let him catch you until you're ${formatSize(CATCHER_EAT_R)}.`);
+    this.game.events.emit(EV.toast, `Uh oh! The dog catcher spotted Pepper. Keep eating, and don't let him catch you until you're ${formatSize(this.catcherEatR())}.`);
   }
 
   private stepCatcher(dt: number) {
     if (!this.outside) return;
     if (!this.catcher) { if (this.r >= CATCHER_R) this.spawnCatcher(); return; }
     const c = this.catcher;
-    const big = canEat(this.r, CATCHER_SIZE);
+    const big = this.canEat(CATCHER_SIZE);
     if (big && !c.fleeing) {
       c.fleeing = true;
       this.game.events.emit(EV.toast, 'Pepper is bigger than the dog catcher now. Eat him!');
@@ -453,7 +601,8 @@ export class GameScene extends Phaser.Scene {
     if (c.detour > 0) { c.detour -= dt; ang += c.detourAng; }
 
     // He keeps up with a growing Pepper, and lunges with the net when he's close.
-    let speed = c.fleeing ? 0.72 * speedFor(this.r) : Math.max(CATCHER_SPEED, 0.8 * speedFor(this.r));
+    let speed = c.fleeing ? 0.72 * speedFor(this.r) : Math.max(CATCHER_SPEED, 0.8 * speedFor(this.r)) * (1 - SNEAKY * this.n('sneaky'));
+    if (c.stun > 0) { c.stun -= dt; speed = 0; }
     c.cool -= dt;
     if (!c.fleeing && c.lunge <= 0 && c.cool <= 0 && d < this.r + CATCHER_RAD + 260) { c.lunge = 0.55; c.cool = 2.6; }
     if (c.lunge > 0) { c.lunge -= dt; speed *= 1.7; }
@@ -479,8 +628,21 @@ export class GameScene extends Phaser.Scene {
     c.gait += (v / 45) * dt;
 
     if (d < this.r + CATCHER_RAD + (c.lunge > 0 ? 30 : 5)) {
-      if (big) this.eatCatcher(); else this.getCaught();
+      if (big) this.eatCatcher(); else if (this.furLeft > 0) this.slipNet(); else if (this.safeT <= 0) this.getCaught();
     }
+  }
+
+  /** Slippery Fur: the net slides off, Pepper gets a moment to run, and he's left dazed. */
+  private slipNet() {
+    if (this.safeT > 0) return;
+    const c = this.catcher!;
+    this.furLeft--;
+    this.safeT = 2;
+    c.stun = 1.4; c.lunge = 0; c.cool = 3; c.swing = 1;
+    this.emitPowers();
+    this.game.events.emit(EV.toast, this.furLeft
+      ? `The net slipped off! Slippery Fur can save Pepper ${this.furLeft} more time${this.furLeft > 1 ? 's' : ''}.`
+      : 'The net slipped off! That was the last of the Slippery Fur. Run!');
   }
 
   private getCaught() {
@@ -543,7 +705,7 @@ export class GameScene extends Phaser.Scene {
   // ---------- drawing Pepper ----------
 
   private renderDog(dt: number) {
-    const v = Math.hypot(this.vx, this.vy), moving = Math.min(1, v / speedFor(this.r));
+    const v = Math.hypot(this.vx, this.vy), moving = Math.min(1, v / this.topSpeed());
 
     // Bite lunge: a quick hop forward and back.
     let lunge = 0;
