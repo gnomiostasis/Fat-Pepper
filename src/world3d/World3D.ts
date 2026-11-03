@@ -53,6 +53,8 @@ export class World3D {
   private anims: Anim[] = [];
   private wobbles = new Map<Placed, number>();
   private flap = new THREE.Group();
+  /** One group per building in the level, in the level's order. */
+  private buildings: THREE.Group[] = [];
   private flapAngle = 0;
   /** Floor arrows near Pepper: one to the dog door, one warning where the dog catcher is. */
   private arrows: Record<'door' | 'catcher', THREE.Mesh>;
@@ -191,32 +193,36 @@ export class World3D {
     for (const m of house.marks) walls.box(m.box.x + m.box.w / 2, m.box.y + m.box.h / 2, m.box.w, m.box.h, 0, 0.6, m.color, { ink: false });
     if (house.walls.length || house.counters.length || fd || st || house.marks.length) this.root.add(inkedMesh(walls.build()));
 
-    // Buildings: solid walls with a roof slab on top
-    if (house.buildings.length) {
+    // Buildings: solid walls with a roof slab on top. Each is its own mesh, centred on
+    // its footprint, so Pepper can eat them one at a time once she's big enough.
+    this.buildings = house.buildings.map((bd) => {
       const bb = new ModelBuilder();
-      for (const bd of house.buildings) {
-        const xs = bd.poly.map((p) => p[0]), ys = bd.poly.map((p) => p[1]);
-        const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
-        const isRect = bd.poly.length === 4 && bd.poly.every(([x, y]) => (x === x0 || x === x1) && (y === y0 || y === y1));
-        if (isRect) {
-          // A house: walls, a door and windows, under a hip roof with eaves
-          const w = x1 - x0, d = y1 - y0, cx = (x0 + x1) / 2, cz = (y0 + y1) / 2;
-          bb.box(cx, cz, w, d, 0, bd.height, bd.wall).pyramid(cx, cz, w + 80, d + 80, bd.height, Math.min(w, d) * 0.32, bd.roof);
-          for (const side of [-1, 1]) {
-            const z = cz + side * (d / 2 + 1);
-            for (let i = 0; i < 3; i++) bb.box(x0 + w * (0.2 + i * 0.3), z, 110, 2, bd.height * 0.4, bd.height * 0.35, PAL.navy, { ink: false });
-            bb.box(cx, z, 100, 3, 0, bd.height * 0.7, PAL.woodDark, { ink: false });
-          }
-          for (const side of [-1, 1]) bb.box(cx + side * (w / 2 + 1), cz, 2, 110, bd.height * 0.4, bd.height * 0.35, PAL.navy, { ink: false });
-        } else {
-          const shape = new THREE.Shape(bd.poly.map(([x, y]) => new THREE.Vector2(x, -y)));
-          const body = new THREE.ExtrudeGeometry(shape, { depth: bd.height, bevelEnabled: false }).rotateX(-Math.PI / 2);
-          const roof = new THREE.ExtrudeGeometry(shape, { depth: 30, bevelEnabled: false }).rotateX(-Math.PI / 2);
-          bb.add(body, bd.wall, 0, 0, 0).add(roof, bd.roof, 0, bd.height, 0);
+      const xs = bd.poly.map((p) => p[0]), ys = bd.poly.map((p) => p[1]);
+      const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+      const cx = (x0 + x1) / 2, cz = (y0 + y1) / 2;
+      const isRect = bd.poly.length === 4 && bd.poly.every(([x, y]) => (x === x0 || x === x1) && (y === y0 || y === y1));
+      if (isRect) {
+        // A house: walls, a door and windows, under a hip roof with eaves
+        const w = x1 - x0, d = y1 - y0;
+        bb.box(0, 0, w, d, 0, bd.height, bd.wall).pyramid(0, 0, w + 80, d + 80, bd.height, Math.min(w, d) * 0.32, bd.roof);
+        for (const side of [-1, 1]) {
+          const z = side * (d / 2 + 1);
+          for (let i = 0; i < 3; i++) bb.box(-w / 2 + w * (0.2 + i * 0.3), z, 110, 2, bd.height * 0.4, bd.height * 0.35, PAL.navy, { ink: false });
+          bb.box(0, z, 100, 3, 0, bd.height * 0.7, PAL.woodDark, { ink: false });
         }
+        for (const side of [-1, 1]) bb.box(side * (w / 2 + 1), 0, 2, 110, bd.height * 0.4, bd.height * 0.35, PAL.navy, { ink: false });
+      } else {
+        const shape = new THREE.Shape(bd.poly.map(([x, y]) => new THREE.Vector2(x - cx, -(y - cz))));
+        const body = new THREE.ExtrudeGeometry(shape, { depth: bd.height, bevelEnabled: false }).rotateX(-Math.PI / 2);
+        const roof = new THREE.ExtrudeGeometry(shape, { depth: 30, bevelEnabled: false }).rotateX(-Math.PI / 2);
+        bb.add(body, bd.wall, 0, 0, 0).add(roof, bd.roof, 0, bd.height, 0);
       }
-      this.root.add(inkedMesh(bb.build()));
-    }
+      const g = new THREE.Group();
+      g.add(inkedMesh(bb.build()));
+      g.position.set(cx, 0, cz);
+      this.root.add(g);
+      return g;
+    });
 
     // Welcome mat and the dog door's flap
     const door = house.door, T = house.wallThickness;
@@ -305,6 +311,26 @@ export class World3D {
       t: 0, dur: 0.17,
       step: (k) => { const e = k * k; copy.position.lerpVectors(from, to, e); copy.scale.setScalar(Math.max(0.001, unit * (1 - e))); },
       done: () => this.scene.remove(copy),
+    });
+  }
+
+  /** Pepper ate a whole building: it rocks, then tips up and shrinks into her mouth. */
+  eatBuilding(i: number, mouthX: number, mouthY: number, mouthH: number) {
+    const g = this.buildings[i];
+    if (!g) return;
+    const from = g.position.clone(), to = new THREE.Vector3(mouthX, mouthH, mouthY);
+    const side = Math.random() < 0.5 ? -1 : 1;
+    this.anims.push({
+      t: 0, dur: 0.5,
+      step: (k) => {
+        // A quick shake first, then it gets slurped up.
+        const shake = k < 0.3 ? Math.sin((k / 0.3) * Math.PI * 4) * 0.06 * (1 - k / 0.3) : 0;
+        const e = k < 0.3 ? 0 : ((k - 0.3) / 0.7) ** 2;
+        g.position.lerpVectors(from, to, e);
+        g.rotation.set(side * e * 0.6, 0, shake + side * e * 0.4);
+        g.scale.setScalar(Math.max(0.001, 1 - e));
+      },
+      done: () => { g.visible = false; },
     });
   }
 
