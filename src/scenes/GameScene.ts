@@ -135,7 +135,8 @@ export class GameScene extends Phaser.Scene {
     this.started = false; this.finished = false; this.eatenCount = 0; this.tooSmallUntil = 0;
     this.outside = false; this.catcher = null; this.catcherEaten = false; this.zoom = 1;
     this.houses = []; this.housesEaten = 0;
-    this.stacks = {}; this.milestone = 0; this.pendingPicks = 0; this.picking = false;
+    // One free pick as soon as the run starts.
+    this.stacks = {}; this.milestone = 0; this.pendingPicks = 1; this.picking = false;
     this.furLeft = 0; this.safeT = 0; this.streak = 0; this.lastBite = -99; this.rushT = 0;
 
     // The level is drawn in 3D underneath; this scene keeps the rules and the comic pops.
@@ -466,7 +467,7 @@ export class GameScene extends Phaser.Scene {
     this.picking = true;
     this.pickStart = this.time.now;
     this.vx = this.vy = 0;
-    this.game.events.emit(EV.offer, choices);
+    this.game.events.emit(EV.offer, choices, Object.keys(this.stacks).length === 0);
   }
 
   private takePower(id: PowerId) {
@@ -779,12 +780,12 @@ export class GameScene extends Phaser.Scene {
     const scale = c.eatenT >= 0 ? 1 - Math.min(1, (c.eatenT += dt) / 0.3) : 1;
     this.world.catcher.pose({ x: c.x, y: c.y, heading: c.heading, gait: c.gait, swing: c.swing, scale });
 
-    // A red arrow at Pepper's feet points to him while he's off screen.
+    // A red arrow floating above Pepper's head points to him while he's off screen.
     const d = Math.hypot(c.x - this.x, c.y - this.y);
     const show = !this.finished && d > this.viewCm() * 0.45;
     if (!show) { this.world.setArrow('catcher', false); return; }
     const a = Math.atan2(c.y - this.y, c.x - this.x), dist = this.shownR * 2.6;
-    this.world.setArrow('catcher', true, this.x + Math.cos(a) * dist, this.y + Math.sin(a) * dist, a, this.shownR * 0.5);
+    this.world.setArrow('catcher', true, this.x + Math.cos(a) * dist, this.y + Math.sin(a) * dist, a, this.shownR * 0.5, this.shownR * 2.2);
   }
 
   // ---------- drawing Pepper ----------

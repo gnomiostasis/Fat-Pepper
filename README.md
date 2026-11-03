@@ -16,7 +16,7 @@ Once GitHub Pages is turned on (Settings → Pages → Source: **GitHub Actions*
 3. **Turning the tables.** At 2.88 m Pepper is bigger than the dog catcher. He runs, and she can eat him.
 4. **Eating the neighborhood.** With the dog catcher gone, Pepper keeps growing on cars and trees. At about 7.2 m she can eat the smallest houses (smaller houses go first; Big Jaws helps), and every house is a huge bite. Reach 14 m and she has eaten the neighborhood: that's the win.
 
-**Powerups.** At each size milestone (18 cm, 26 cm, 36 cm and on up to 2.6 m) the game pauses and Pepper picks 1 of 3 random powerups: click or tap a card, or press 1, 2 or 3. Picks stack for the rest of the run, so every run builds differently:
+**Powerups.** Pepper picks 1 of 3 random powerups at the start of the run, then again at 48 cm and 1.64 m. The game pauses for each pick: click or tap a card, or press 1, 2 or 3. Picks stack for the rest of the run, so every run builds differently:
 
 | Powerup | What it does (per pick) |
 | --- | --- |

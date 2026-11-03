@@ -89,6 +89,14 @@ export class World3D {
       tri.rotateX(-Math.PI / 2);
       const m = inkedMesh(new ModelBuilder().add(tri, color, 0, 0, 0).build());
       m.visible = false;
+      // Drawn last and through everything, so the ground, furniture and Pepper never hide it.
+      m.castShadow = false; m.receiveShadow = false;
+      m.traverse((o) => {
+        const mesh = o as THREE.Mesh;
+        const mat = mesh.material as THREE.Material;
+        mat.depthTest = false; mat.depthWrite = false;
+        mesh.renderOrder = o === m ? 1001 : 1000; // outline first, fill on top of it
+      });
       this.scene.add(m);
       return m;
     };
@@ -354,11 +362,11 @@ export class World3D {
     this.anims.push({ t: 0, dur: 1.3, step: (k) => { this.flapAngle = 1.25 * Math.sin(Math.min(1, k * 1.6) * Math.PI * 0.5) * (k < 0.7 ? 1 : (1 - k) / 0.3); } });
   }
 
-  setArrow(which: 'door' | 'catcher', show: boolean, x = 0, y = 0, angle = 0, size = 1) {
+  setArrow(which: 'door' | 'catcher', show: boolean, x = 0, y = 0, angle = 0, size = 1, height = 1) {
     const a = this.arrows[which];
     a.visible = show;
     if (!show) return;
-    a.position.set(x, 1, y);
+    a.position.set(x, height, y);
     a.rotation.y = -angle;
     a.scale.set(size, 1, size);
   }

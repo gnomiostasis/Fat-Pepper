@@ -58,7 +58,7 @@ export class UIScene extends Phaser.Scene {
     const onDone = (s: RunStats) => this.showFinish(s);
     const onGoal = (g: Goal) => { this.goal = g; this.drawHud(); };
     const onPowers = (p: PowerState) => { this.powers = p; this.drawHud(); };
-    const onOffer = (choices: PowerDef[]) => this.showPicker(choices);
+    const onOffer = (choices: PowerDef[], first: boolean) => this.showPicker(choices, first);
     bus.on(EV.size, onSize); bus.on(EV.eat, onEat); bus.on(EV.toast, onToast); bus.on(EV.done, onDone); bus.on(EV.goal, onGoal);
     bus.on(EV.powers, onPowers); bus.on(EV.offer, onOffer);
     const onResize = () => this.layout();
@@ -128,12 +128,12 @@ export class UIScene extends Phaser.Scene {
   // ---------- picking a powerup ----------
 
   /** Pick 1 of 3: cards side by side (stacked on a narrow phone), click, tap or press 1-3. */
-  private showPicker(choices: PowerDef[]) {
+  private showPicker(choices: PowerDef[], first = false) {
     this.picker?.destroy();
     const c = this.add.container(0, 0).setDepth(90);
     this.picker = c;
     const dim = this.add.rectangle(0, 0, 10, 10, hexNum(PAL.ink), 0.4).setOrigin(0).setInteractive();
-    const title = this.add.text(0, 0, 'Pepper grew! Pick a powerup', {
+    const title = this.add.text(0, 0, first ? 'Pick a powerup to start' : 'Pepper grew! Pick a powerup', {
       fontFamily: DISPLAY, fontSize: '40px', color: PAL.cream, stroke: PAL.rust, strokeThickness: 8, align: 'center',
     }).setOrigin(0.5, 0);
     c.add([dim, title]);
