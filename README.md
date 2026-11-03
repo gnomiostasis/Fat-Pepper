@@ -15,7 +15,7 @@ Once GitHub Pages is turned on (Settings → Pages → Source: **GitHub Actions*
 2. **Outdoors.** Out the dog door is the neighborhood: streets, yards, houses and a lot more to eat. At 80 cm the dog catcher spots Pepper and gives chase with his net. Keep eating and keep moving; if he catches her, it is off to the pound.
 3. **Turning the tables.** At 2.88 m Pepper is bigger than the dog catcher. He runs, and she can eat him.
 
-**Powerups.** At each size milestone (18 cm, 26 cm, 36 cm and on up to 2.6 m) the game pauses and Pepper picks 1 of 3 random powerups: click or tap a card, or press 1, 2 or 3. Picks stack for the rest of the run, so every run builds differently:
+**Powerups.** Pepper picks 1 of 3 random powerups at the start of the run, then again at 48 cm and 1.64 m. The game pauses for each pick: click or tap a card, or press 1, 2 or 3. Picks stack for the rest of the run, so every run builds differently:
 
 | Powerup | What it does (per pick) |
 | --- | --- |

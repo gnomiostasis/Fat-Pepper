@@ -117,7 +117,8 @@ export class GameScene extends Phaser.Scene {
     this.biteT = -1; this.happy = 0; this.lastPop = 0;
     this.started = false; this.finished = false; this.eatenCount = 0; this.tooSmallUntil = 0;
     this.outside = false; this.catcher = null; this.zoom = 1;
-    this.stacks = {}; this.milestone = 0; this.pendingPicks = 0; this.picking = false;
+    // One free pick as soon as the run starts.
+    this.stacks = {}; this.milestone = 0; this.pendingPicks = 1; this.picking = false;
     this.furLeft = 0; this.safeT = 0; this.streak = 0; this.lastBite = -99; this.rushT = 0;
 
     // The level is drawn in 3D underneath; this scene keeps the rules and the comic pops.
@@ -426,7 +427,7 @@ export class GameScene extends Phaser.Scene {
     this.picking = true;
     this.pickStart = this.time.now;
     this.vx = this.vy = 0;
-    this.game.events.emit(EV.offer, choices);
+    this.game.events.emit(EV.offer, choices, Object.keys(this.stacks).length === 0);
   }
 
   private takePower(id: PowerId) {

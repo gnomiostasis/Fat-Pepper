@@ -62,8 +62,11 @@ export const RUSH_TIME = 1;
 /** Catcher speed cut per Sneaky Paws. */
 export const SNEAKY = 0.1;
 
-/** Pepper's radius at each powerup pick. The dog door is at 28 and the catcher shows up at 40. */
-export const MILESTONES = [9, 13, 18, 24, 33, 46, 62, 82, 105, 130];
+/**
+ * Pepper's radius at each powerup pick after the free one at the start: every ~3.5x of growth,
+ * so a run gets 3 picks in all. The dog door is at 28, the catcher shows up at 40 and is eaten at 144.
+ */
+export const MILESTONES = [24, 82];
 
 export type Stacks = Partial<Record<PowerId, number>>;
 
