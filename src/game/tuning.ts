@@ -34,6 +34,7 @@ export function formatSize(r: number) {
   const cm = r * 2;
   if (cm < 100) return `${cm.toFixed(cm < 20 ? 1 : 0)} cm`;
   const m = cm / 100;
+  if (m >= 1000) return `${(m / 1000).toFixed(2)} km`;
   return `${m.toFixed(m < 10 ? 2 : m < 100 ? 1 : 0)} m`;
 }
 
@@ -57,5 +58,12 @@ export const TOWN_R = 700;
  * she steps over anything she can't eat yet, so a neighborhood or office tower can never box her in.
  */
 export const STREET_R = 1100;
-/** Phase 5: Pepper's size when she has eaten enough of the town to win the run. */
-export const WIN_R = 7000;
+/** Pepper's size when she has outgrown the town and can waddle off into the countryside. */
+export const COUNTRY_R = 7000;
+/**
+ * In the countryside, Pepper's size when she steps over anything she can't eat yet. Villages and towns are
+ * placed at least her width apart until then, so they can't box her in.
+ */
+export const COUNTRY_STEP_R = 15000;
+/** Phase 6: Pepper's size when she has eaten enough of the countryside to win the run. */
+export const WIN_R = 40000;

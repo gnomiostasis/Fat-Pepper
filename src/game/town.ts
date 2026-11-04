@@ -22,7 +22,7 @@ const pick = <T>(a: T[]) => a[Math.floor(Math.random() * a.length)];
 const deg = (rad: number) => (rad * 180) / Math.PI;
 
 /** A smooth curve through the control points (Catmull-Rom), sampled about every `step` cm. */
-function smooth(ctrl: Pt[], step = 1200, closed = false): Pt[] {
+export function smooth(ctrl: Pt[], step = 1200, closed = false): Pt[] {
   const n = ctrl.length, out: Pt[] = [];
   const at = (i: number) => (closed ? ctrl[(i + n) % n] : ctrl[Math.max(0, Math.min(n - 1, i))]);
   const segs = closed ? n : n - 1;
@@ -41,7 +41,7 @@ function smooth(ctrl: Pt[], step = 1200, closed = false): Pt[] {
 }
 
 /** Control points from a to b, pushed sideways at random so the road wanders. */
-function wander(a: Pt, b: Pt, n: number, amp: number): Pt[] {
+export function wander(a: Pt, b: Pt, n: number, amp: number): Pt[] {
   const dx = b[0] - a[0], dy = b[1] - a[1], len = Math.hypot(dx, dy), nx = -dy / len, ny = dx / len;
   const pts: Pt[] = [a];
   for (let i = 1; i < n; i++) {
@@ -53,7 +53,7 @@ function wander(a: Pt, b: Pt, n: number, amp: number): Pt[] {
 }
 
 /** Distance from x,y to a polyline, and the direction of the piece of it that's closest. */
-function nearLine(x: number, y: number, pts: Pt[]) {
+export function nearLine(x: number, y: number, pts: Pt[]) {
   let best = Infinity, ang = 0, along = 0, total = 0;
   for (let i = 0; i < pts.length - 1; i++) {
     const [ax, ay] = pts[i], [bx, by] = pts[i + 1], dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy || 1;
@@ -65,12 +65,12 @@ function nearLine(x: number, y: number, pts: Pt[]) {
   return { d: best, ang, along };
 }
 
-function disc(x: number, y: number, r: number, n = 16): Pt[] {
+export function disc(x: number, y: number, r: number, n = 16): Pt[] {
   return Array.from({ length: n }, (_, i): Pt => [x + Math.cos((i / n) * Math.PI * 2) * r, y + Math.sin((i / n) * Math.PI * 2) * r]);
 }
 
 /** A road drawn as one quad per piece, with a round patch at every bend so the joins don't show. */
-function strip(pts: Pt[], w: number, caps = false): Pt[][] {
+export function strip(pts: Pt[], w: number, caps = false): Pt[][] {
   const polys: Pt[][] = [], h = w / 2;
   for (let i = 0; i < pts.length - 1; i++) {
     const [ax, ay] = pts[i], [bx, by] = pts[i + 1], len = Math.hypot(bx - ax, by - ay) || 1;
@@ -83,7 +83,7 @@ function strip(pts: Pt[], w: number, caps = false): Pt[][] {
 }
 
 /** The river as one outline: down its left bank and back up its right. */
-function ribbon(pts: Pt[], w: number): Pt[] {
+export function ribbon(pts: Pt[], w: number): Pt[] {
   const left: Pt[] = [], right: Pt[] = [];
   pts.forEach(([x, y], i) => {
     const [px, py] = pts[Math.max(0, i - 1)], [qx, qy] = pts[Math.min(pts.length - 1, i + 1)];

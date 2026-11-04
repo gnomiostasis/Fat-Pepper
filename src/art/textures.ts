@@ -138,6 +138,15 @@ function floorTextures(add: (key: string, c: HTMLCanvasElement) => void) {
     add('floor-water', c);
   }
 
+  // Fields seen from very high up: crop rows in three colours
+  for (const [key, base, row] of [['floor-crops', '#b9da8f', '#9cc777'], ['floor-wheat', '#f1d98c', '#e2c36d'], ['floor-plough', '#d8b48a', '#c39a6f']] as const) {
+    const { c, ctx } = canvas(N, N);
+    ctx.fillStyle = base; ctx.fillRect(0, 0, N, N);
+    ctx.fillStyle = row;
+    for (let x = 0; x < N; x += 16) ctx.fillRect(x, 0, 7, N);
+    add(key, c);
+  }
+
   // Outside: mint grass with pale patches and little tufts
   {
     const { c, ctx } = canvas(N, N), r = rng(7);

@@ -40,6 +40,8 @@ export interface RunStats {
   houses: number;
   /** Whole neighborhoods Pepper ate in town. */
   hoods: number;
+  /** Whole towns Pepper ate in the countryside. */
+  towns: number;
   r: number;
   stacks: Stacks;
 }
