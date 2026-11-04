@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { ItemDef } from '../art/items';
 import { PAL } from '../art/palette';
 import { FLOOR_TILE_WORLD, floorCanvases } from '../art/textures';
@@ -166,17 +167,23 @@ export class World3D {
     grass.receiveShadow = true;
     this.root.add(grass);
 
-    // Floors, each clipped to its room
-    house.floors.forEach((f, i) => {
-      const t = tex(f.texture);
+    // Floors, each clipped to its room. A run of floors with the same pattern is merged into one mesh,
+    // so a town of hundreds of road pieces is still only a handful of meshes. Later floors sit on top.
+    let layer = 0;
+    for (let i = 0; i < house.floors.length;) {
+      const key = house.floors[i].texture, geos: THREE.BufferGeometry[] = [];
+      for (; i < house.floors.length && house.floors[i].texture === key; i++) {
+        geos.push(new THREE.ShapeGeometry(new THREE.Shape(house.floors[i].poly.map(([x, y]) => new THREE.Vector2(x, -y)))));
+      }
+      const geo = (geos.length > 1 ? mergeGeometries(geos)! : geos[0]).rotateX(-Math.PI / 2);
+      if (geos.length > 1) for (const g of geos) g.dispose();
+      const t = tex(key);
       t.repeat.set(1 / (FLOOR_TILE_WORLD * tile), 1 / (FLOOR_TILE_WORLD * tile));
-      const geo = new THREE.ShapeGeometry(new THREE.Shape(f.poly.map(([x, y]) => new THREE.Vector2(x, -y))));
-      geo.rotateX(-Math.PI / 2);
       const mesh = new THREE.Mesh(geo, paint({ map: t }));
-      mesh.position.y = i * 0.25 * tile;
+      mesh.position.y = layer++ * 0.25 * tile;
       mesh.receiveShadow = true;
       this.root.add(mesh);
-    });
+    }
 
     // Walls (or fences), kitchen counter, front door, stairs
     const WALL_H = house.wallStyle.height;
@@ -228,7 +235,9 @@ export class World3D {
       }
     }
     // Paint on the ground
-    for (const m of house.marks) walls.box(m.box.x + m.box.w / 2, m.box.y + m.box.h / 2, m.box.w, m.box.h, 0, 0.6, m.color, { ink: false });
+    // Paint sits just above the top floor, so it shows over the roads.
+    const paintH = 0.6 + Math.max(0, layer - 1) * 0.25 * tile;
+    for (const m of house.marks) walls.box(m.box.x + m.box.w / 2, m.box.y + m.box.h / 2, m.box.w, m.box.h, 0, paintH, m.color, { ink: false });
     if (house.walls.some((sg) => !outdoors && !sg.inner) || fd || st || house.marks.length) this.root.add(inkedMesh(walls.build()));
 
     // Buildings: solid walls with a roof slab on top. Each is its own mesh, centred on

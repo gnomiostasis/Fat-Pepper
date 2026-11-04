@@ -248,8 +248,11 @@ export class GameScene extends Phaser.Scene {
   private addFurniture(id: string, x: number, y: number, rotDeg: number) {
     const def = ITEM_BY_ID[id];
     const sc = def.size / Math.max(def.w, def.h);
-    const turned = rotDeg % 180 !== 0;
-    const bw = (turned ? def.h : def.w) * sc, bh = (turned ? def.w : def.h) * sc;
+    // Collision is an upright box: the turned footprint's bounds, trimmed a little when it sits at an angle
+    // so Pepper doesn't bump into thin air at the corners.
+    const a = Phaser.Math.DegToRad(rotDeg), c = Math.abs(Math.cos(a)), sn = Math.abs(Math.sin(a));
+    const trim = rotDeg % 90 === 0 ? 1 : 0.85;
+    const bw = (def.w * c + def.h * sn) * sc * trim, bh = (def.w * sn + def.h * c) * sc * trim;
     const box = { x: x - bw / 2, y: y - bh / 2, w: bw, h: bh };
     this.solidGrid.insertBox(box, box);
     const t: Thing = { def, x, y, rot: Phaser.Math.DegToRad(rotDeg), rad: Math.min(bw, bh) / 2, box, eaten: false };
@@ -389,7 +392,7 @@ export class GameScene extends Phaser.Scene {
 
     this.rushT = Math.max(0, this.rushT - dt);
     this.safeT = Math.max(0, this.safeT - dt);
-    const speed = this.topSpeed() * ease, a = 1 - Math.exp(-dt * 22);
+    const speed = this.topSpeed() * ease * this.paddle(), a = 1 - Math.exp(-dt * 22);
     this.vx += (dx * speed - this.vx) * a;
     this.vy += (dy * speed - this.vy) * a;
     this.x += this.vx * dt;
@@ -537,6 +540,14 @@ export class GameScene extends Phaser.Scene {
       { d: this.y - (b.y + r), a: -Math.PI / 2 }, { d: b.y + b.h - r - this.y, a: Math.PI / 2 },
     ];
     return edges.sort((p, q) => p.d - q.d)[0];
+  }
+
+  /** In water (the town's river or pond, off the bridges) a smaller Pepper has to paddle, at about half speed. */
+  private paddle() {
+    const { water, paths } = this.house;
+    if (!water || this.r >= STREET_R || !water.some((poly) => inPoly(this.x, this.y, poly))) return 1;
+    const onBridge = paths?.some((p) => p.pts.some((q, i) => i > 0 && segHit(this.x, this.y, { a: p.pts[i - 1], b: q, t: 0 }).d < p.w / 2));
+    return onBridge ? 1 : 0.5;
   }
 
   private topSpeed() {

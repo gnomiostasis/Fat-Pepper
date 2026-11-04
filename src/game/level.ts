@@ -11,7 +11,8 @@ export interface Seg {
   inner?: boolean;
 }
 
-export interface FurnitureSpot { id: string; x: number; y: number; rot: 0 | 90 | 180 | 270 }
+/** Something placed by the layout. `rot` is in degrees, clockwise; the house and neighborhood stick to right angles. */
+export interface FurnitureSpot { id: string; x: number; y: number; rot: number }
 
 /** A building seen from outside: a solid block with a roof. */
 export interface Building { poly: Pt[]; height: number; wall: string; roof: string }
@@ -42,6 +43,10 @@ export interface Level {
   wallThickness: number;
   /** How many times bigger the floor patterns are drawn, for levels built at a bigger scale (the town). */
   tile?: number;
+  /** Water (a river, a pond) that slows Pepper down while she's small enough to have to paddle. */
+  water?: Pt[][];
+  /** Roads (centre line and width) that cross the water as bridges, so Pepper doesn't paddle on them. */
+  paths?: { pts: Pt[]; w: number }[];
   spawn: { x: number; y: number };
   /** Where the dog catcher can come from (Phase 2). */
   catcherSpawns?: Pt[];
