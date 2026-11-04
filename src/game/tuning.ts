@@ -52,5 +52,10 @@ export const CATCHER_RAD = 35;
 export const HOUSE_BITE = 0.55;
 /** Pepper's size when she has outgrown the neighborhood and can waddle off to town. */
 export const TOWN_R = 700;
+/**
+ * In town, Pepper's size when she's too wide for the streets (24 m across, sidewalks included). From then on
+ * she steps over anything she can't eat yet, so a neighborhood or office tower can never box her in.
+ */
+export const STREET_R = 1100;
 /** Phase 5: Pepper's size when she has eaten enough of the town to win the run. */
 export const WIN_R = 7000;

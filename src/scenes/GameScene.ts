@@ -13,7 +13,7 @@ import {
   Stacks, TONGUE, ZOOMIES, rollChoices,
 } from '../game/powerups';
 import {
-  CATCHER_R, CATCHER_RAD, CATCHER_SIZE, CATCHER_SPEED, DOOR_R, EAT_RATIO, GROW_K, HOUSE_BITE, START_R, TOWN_R, WALL_R, WIN_R,
+  CATCHER_R, CATCHER_RAD, CATCHER_SIZE, CATCHER_SPEED, DOOR_R, EAT_RATIO, GROW_K, HOUSE_BITE, START_R, STREET_R, TOWN_R, WALL_R, WIN_R,
   canHop, fatFor, formatSize, grownRadius, OUTDOOR_ZOOM, speedFor, viewFor,
 } from '../game/tuning';
 import { ITEMS } from '../art/items';
@@ -95,6 +95,8 @@ export class GameScene extends Phaser.Scene {
   /** Building edges, solid like walls but drawn as part of the building. */
   private buildingPolys: Pt[][] = [];
   private things: Thing[] = [];
+  /** Which thing each piece of furniture's collision box belongs to. */
+  private boxOwner = new Map<Box, Thing>();
   /** Things and solid boxes by where they are, so only the ones near Pepper get checked each frame. */
   private grid = new Grid<Thing>(100);
   private solidGrid = new Grid<Box>(100);
@@ -191,7 +193,7 @@ export class GameScene extends Phaser.Scene {
 
   private loadLevel(level: Level) {
     this.house = level;
-    this.things = []; this.segs = [];
+    this.things = []; this.segs = []; this.boxOwner.clear();
     const cell = Math.max(100, Math.max(level.bounds.w, level.bounds.h) / 80);
     this.grid = new Grid(cell); this.solidGrid = new Grid(cell);
     this.x = level.spawn.x; this.y = level.spawn.y;
@@ -246,11 +248,16 @@ export class GameScene extends Phaser.Scene {
   private addFurniture(id: string, x: number, y: number, rotDeg: number) {
     const def = ITEM_BY_ID[id];
     const sc = def.size / Math.max(def.w, def.h);
-    const turned = rotDeg % 180 !== 0;
-    const bw = (turned ? def.h : def.w) * sc, bh = (turned ? def.w : def.h) * sc;
+    // Collision is an upright box: the turned footprint's bounds, trimmed a little when it sits at an angle
+    // so Pepper doesn't bump into thin air at the corners.
+    const a = Phaser.Math.DegToRad(rotDeg), c = Math.abs(Math.cos(a)), sn = Math.abs(Math.sin(a));
+    const trim = rotDeg % 90 === 0 ? 1 : 0.85;
+    const bw = (def.w * c + def.h * sn) * sc * trim, bh = (def.w * sn + def.h * c) * sc * trim;
     const box = { x: x - bw / 2, y: y - bh / 2, w: bw, h: bh };
     this.solidGrid.insertBox(box, box);
-    this.addThing({ def, x, y, rot: Phaser.Math.DegToRad(rotDeg), rad: Math.min(bw, bh) / 2, box, eaten: false });
+    const t: Thing = { def, x, y, rot: Phaser.Math.DegToRad(rotDeg), rad: Math.min(bw, bh) / 2, box, eaten: false };
+    this.boxOwner.set(box, t);
+    this.addThing(t);
   }
 
   private addThing(t: Thing) {
@@ -385,7 +392,7 @@ export class GameScene extends Phaser.Scene {
 
     this.rushT = Math.max(0, this.rushT - dt);
     this.safeT = Math.max(0, this.safeT - dt);
-    const speed = this.topSpeed() * ease, a = 1 - Math.exp(-dt * 22);
+    const speed = this.topSpeed() * ease * this.paddle(), a = 1 - Math.exp(-dt * 22);
     this.vx += (dx * speed - this.vx) * a;
     this.vy += (dy * speed - this.vy) * a;
     this.x += this.vx * dt;
@@ -414,8 +421,11 @@ export class GameScene extends Phaser.Scene {
 
   private collide(time: number) {
     const r = this.r;
+    // In town, once Pepper is too wide for the streets she steps over whatever she can't eat yet.
+    const overAll = this.stage === 2 && r >= STREET_R;
     for (const b of this.solidsNear(this.x, this.y, r + 1)) {
       if (b !== this.doorFlap && !this.outside && canHop(r, Math.min(b.w, b.h))) continue;
+      if (overAll) continue;
       const nx = Phaser.Math.Clamp(this.x, b.x, b.x + b.w), ny = Phaser.Math.Clamp(this.y, b.y, b.y + b.h);
       let ox = this.x - nx, oy = this.y - ny;
       const d = Math.hypot(ox, oy);
@@ -428,6 +438,9 @@ export class GameScene extends Phaser.Scene {
           this.game.events.emit(EV.toast, `Too small! Pepper needs to be ${formatSize(DOOR_R)} to jump through.`);
           this.world.flapBump();
         }
+      } else if (this.stage === 2 && time > this.tooSmallUntil && HOODS.has(this.boxOwner.get(b)?.def.id ?? '')) {
+        this.tooSmallUntil = time + 4000;
+        this.game.events.emit(EV.toast, `A whole neighborhood is too big to eat yet! Pepper can gulp one at ${formatSize(this.hoodEatR())}.`);
       }
 
       if (d > 0.0001) { ox /= d; oy /= d; this.x = nx + ox * r; this.y = ny + oy * r; }
@@ -455,7 +468,7 @@ export class GameScene extends Phaser.Scene {
 
     // Loose things that are still too big to eat are solid too.
     for (const t of this.grid.near(this.x, this.y, r)) {
-      if (t.eaten || t.box || this.canEat(t.def.size)) continue;
+      if (t.eaten || t.box || overAll || this.canEat(t.def.size)) continue;
       let ox = this.x - t.x, oy = this.y - t.y;
       const d = Math.hypot(ox, oy), min = r + t.rad * 0.85;
       if (d >= min || d < 0.0001) continue;
@@ -527,6 +540,14 @@ export class GameScene extends Phaser.Scene {
       { d: this.y - (b.y + r), a: -Math.PI / 2 }, { d: b.y + b.h - r - this.y, a: Math.PI / 2 },
     ];
     return edges.sort((p, q) => p.d - q.d)[0];
+  }
+
+  /** In water (the town's river or pond, off the bridges) a smaller Pepper has to paddle, at about half speed. */
+  private paddle() {
+    const { water, paths } = this.house;
+    if (!water || this.r >= STREET_R || !water.some((poly) => inPoly(this.x, this.y, poly))) return 1;
+    const onBridge = paths?.some((p) => p.pts.some((q, i) => i > 0 && segHit(this.x, this.y, { a: p.pts[i - 1], b: q, t: 0 }).d < p.w / 2));
+    return onBridge ? 1 : 0.5;
   }
 
   private topSpeed() {
@@ -703,6 +724,9 @@ export class GameScene extends Phaser.Scene {
       }
       if (this.catcherEaten) this.emitGoal();
     } else if (this.stage === 2) {
+      if (before < STREET_R && this.r >= STREET_R) {
+        this.game.events.emit(EV.toast, 'Too wide for the streets! Pepper can stomp right over anything she can\'t eat yet.');
+      }
       const hoodR = this.hoodEatR();
       if (this.hoodsEaten === 0 && before < hoodR && this.r >= hoodR) {
         this.game.events.emit(EV.toast, 'Pepper can eat whole neighborhoods now! Find one with a hedge round it.');

@@ -189,6 +189,41 @@ export const TOWN_ITEMS: ItemDef[] = [
     b.box(0, -3, 7, 7, 14.6, 8, PAL.cream).cyl(0, -3, 3.4, 22.6, 0.8, PAL.greyLight).ball(0, 23.4, -3, 3.3, PAL.tealLight, { sy: 0.9 });
     b.cyl(0, 0.55, 2, 18, 0.3, PAL.white, { rx: Math.PI / 2 }).ball(0, 26.6, -3, 0.6, PAL.yellow);
   } },
+  { id: 'train', name: 'train', size: 1600, w: 32, h: 5, furniture: true, model(b) {
+    b.box(-11, 0, 9, 4, 0.8, 4.4, PAL.collar).box(-9, 0, 4, 4.2, 5.2, 1.6, PAL.navy).cyl(-14, 0, 0.8, 5.2, 1.6, PAL.ink);
+    for (const x of [0, 11]) b.box(x, 0, 10, 4, 0.8, 4, PAL.tealLight).box(x, 0, 10.2, 4.2, 3, 1.2, PAL.sky, flat).box(x, 0, 10.4, 4.4, 4.8, 0.4, PAL.tealDark);
+    for (const x of [-14, -8, -3, 3, 8, 14]) b.rod(x, 0.7, 0, 0.7, 4.4, 'z', PAL.ink, flat);
+  } },
+  { id: 'carousel', name: 'carousel', size: 1200, w: 32, h: 32, furniture: true, model(b) {
+    b.cyl(0, 0, 15, 0, 1.6, PAL.cream).cyl(0, 0, 2.4, 1.6, 12, PAL.pink);
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2, x = Math.cos(a) * 11, z = Math.sin(a) * 11;
+      b.cyl(x, z, 0.3, 1.6, 11, PAL.mustard).box(x, z, 1.4, 3.6, 4.5, 2.4, [PAL.white, PAL.sky, PAL.pink, PAL.mustard][i % 4], { ry: -a });
+    }
+    b.cone(0, 0, 16.5, 13.6, 7, PAL.collar).ball(0, 21, 0, 1.1, PAL.yellow);
+  } },
+  { id: 'station', name: 'railway station', size: 1800, w: 32, h: 16, furniture: true, model(b) {
+    b.box(0, -3, 22, 9, 0, 10, PAL.cream).pyramid(0, -3, 23.5, 10.5, 10, 4, PAL.rust);
+    b.box(0, 5, 32, 6, 0, 1.2, PAL.greyLight).box(0, 5.5, 30, 5, 7.5, 0.6, PAL.tealDark);
+    for (const x of [-13, -5, 5, 13]) b.box(x, 7, 0.5, 0.5, 1.2, 6.4, PAL.tealDark);
+    b.cyl(0, 1.6, 1.8, 7, 0.4, PAL.white, { rx: Math.PI / 2 }).box(-6, 1.55, 3, 0.2, 2, 5, PAL.woodDark, flat).box(6, 1.55, 3, 0.2, 4, 3, PAL.sky, flat);
+  } },
+  { id: 'ferriswheel', name: 'Ferris wheel', size: 2400, w: 32, h: 12, furniture: true, model(b) {
+    b.box(0, 0, 14, 10, 0, 1, PAL.greyLight);
+    for (const s of [-1, 1]) for (const z of [-3, 3]) b.box(s * 4.5, z, 0.8, 0.8, 0, 14, PAL.white, { rz: s * 0.32 });
+    b.wheel(0, 15, -2.2, 12, 0.5, PAL.collar).wheel(0, 15, 2.2, 12, 0.5, PAL.collar).rod(0, 15, 0, 1.2, 5, 'z', PAL.white);
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Math.PI * 2, x = Math.cos(a) * 12, y = 15 + Math.sin(a) * 12;
+      b.box(x / 2, 0, 12, 0.3, 15 + Math.sin(a) * 6 - 0.15, 0.3, PAL.white, { ...flat, rz: a });
+      b.box(x, 0, 2.4, 3, y - 2.6, 2.2, [PAL.sky, PAL.mustard, PAL.pink, PAL.tealLight, PAL.purple][i % 5]);
+    }
+  } },
+  { id: 'bigtop', name: 'circus tent', size: 2600, w: 32, h: 32, furniture: true, model(b) {
+    b.cyl(0, 0, 15, 0, 8, PAL.white);
+    for (let i = 0; i < 12; i++) { const a = (i / 12) * Math.PI * 2; b.box(Math.cos(a) * 15, Math.sin(a) * 15, 3.6, 0.4, 0, 8, PAL.collar, { ...flat, ry: -a + Math.PI / 2 }); }
+    b.cone(0, 0, 16.5, 8, 9, PAL.collar).cone(0, 0, 9, 12.5, 4.6, PAL.white).cyl(0, 0, 0.3, 17, 4, PAL.grey).box(1.4, 0, 2.4, 0.2, 19.5, 1.5, PAL.yellow, flat);
+    b.box(0, 15.1, 5, 0.4, 0, 6, PAL.ink, flat);
+  } },
   hood('hood', 'loop'),
   hood('hoodrow', 'row'),
 ];

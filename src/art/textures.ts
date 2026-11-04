@@ -126,6 +126,18 @@ function floorTextures(add: (key: string, c: HTMLCanvasElement) => void) {
     add('floor-sidewalk', c);
   }
 
+  // Water: soft blue with pale ripples, for the river and the pond
+  {
+    const { c, ctx } = canvas(N, N), r = rng(41);
+    ctx.fillStyle = '#9fcbe0'; ctx.fillRect(0, 0, N, N);
+    ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+    for (let i = 0; i < 9; i++) {
+      const x = r() * N, y = r() * N, w = 18 + r() * 26;
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.quadraticCurveTo(x + w / 2, y - 6, x + w, y); ctx.stroke();
+    }
+    add('floor-water', c);
+  }
+
   // Outside: mint grass with pale patches and little tufts
   {
     const { c, ctx } = canvas(N, N), r = rng(7);
