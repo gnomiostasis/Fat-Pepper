@@ -291,13 +291,14 @@ export class UIScene extends Phaser.Scene {
 
   private showFinish(s: RunStats) {
     const m = Math.floor(s.seconds / 60), sec = Math.floor(s.seconds % 60).toString().padStart(2, '0');
-    const won = s.outcome === 'ate-catcher';
+    const won = s.outcome === 'won';
+    const houses = `${s.houses} house${s.houses === 1 ? '' : 's'}`;
     this.showCard(
-      won ? 'Pepper ate the dog catcher!' : 'Gotcha!',
+      won ? 'Pepper ate it all!' : 'Gotcha!',
       won
-        ? `At ${formatSize(s.r)} she gulped him down, net and all, after eating ${s.eaten} things in ${m}:${sec}.`
+        ? `${formatSize(s.r)} of very good dog. She ate ${houses}, the dog catcher and ${s.eaten - s.houses - 1} other things in ${m}:${sec}.`
         : `The dog catcher netted Pepper at ${formatSize(s.r)}, after she ate ${s.eaten} things in ${m}:${sec}. Off to the pound!`,
-      this.buildLine(s.stacks) || (won ? 'Eating whole buildings comes next.' : 'Keep moving and keep eating: he speeds up as you grow.'),
+      this.buildLine(s.stacks) || (won ? 'Not a crumb left.' : 'Keep moving and keep eating: he speeds up as you grow.'),
       won ? 'Play again' : 'Try again',
       () => {
         this.scene.get('game').scene.restart();

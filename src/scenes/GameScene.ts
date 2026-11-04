@@ -10,7 +10,7 @@ import {
   Stacks, TONGUE, ZOOMIES, rollChoices,
 } from '../game/powerups';
 import {
-  CATCHER_R, CATCHER_RAD, CATCHER_SIZE, CATCHER_SPEED, DOOR_R, EAT_RATIO, START_R,
+  CATCHER_R, CATCHER_RAD, CATCHER_SIZE, CATCHER_SPEED, DOOR_R, EAT_RATIO, GROW_K, HOUSE_BITE, START_R, WIN_R,
   fatFor, formatSize, grownRadius, OUTDOOR_ZOOM, speedFor, viewFor,
 } from '../game/tuning';
 import { ITEMS } from '../art/items';
@@ -22,6 +22,19 @@ interface Thing extends Placed {
   rad: number;
   /** Collision box for furniture. */
   box?: Box;
+  eaten: boolean;
+}
+
+/** A building in the neighborhood, which Pepper can eat once she's big enough. */
+interface House {
+  /** Index into the level's buildings, which is also its 3D model. */
+  i: number;
+  box: Box;
+  poly: Pt[];
+  /** Its outline, solid like a wall until it's eaten. */
+  edges: Seg[];
+  /** How big it counts as for eating. */
+  bite: number;
   eaten: boolean;
 }
 
@@ -58,6 +71,10 @@ export class GameScene extends Phaser.Scene {
   /** Extra camera pull-back: 1 indoors, easing up to OUTDOOR_ZOOM once outside. */
   private zoom = 1;
   private catcher: Catcher | null = null;
+  /** Pepper ate the dog catcher, so he's gone for good. */
+  private catcherEaten = false;
+  private houses: House[] = [];
+  private housesEaten = 0;
   /** Building edges, solid like walls but drawn as part of the building. */
   private buildingPolys: Pt[][] = [];
   private things: Thing[] = [];
@@ -116,7 +133,8 @@ export class GameScene extends Phaser.Scene {
     this.vx = this.vy = 0; this.heading = -Math.PI / 2; this.walkPhase = 0; this.chomp = 0;
     this.biteT = -1; this.happy = 0; this.lastPop = 0;
     this.started = false; this.finished = false; this.eatenCount = 0; this.tooSmallUntil = 0;
-    this.outside = false; this.catcher = null; this.zoom = 1;
+    this.outside = false; this.catcher = null; this.catcherEaten = false; this.zoom = 1;
+    this.houses = []; this.housesEaten = 0;
     // One free pick as soon as the run starts.
     this.stacks = {}; this.milestone = 0; this.pendingPicks = 1; this.picking = false;
     this.furLeft = 0; this.safeT = 0; this.streak = 0; this.lastBite = -99; this.rushT = 0;
@@ -155,7 +173,13 @@ export class GameScene extends Phaser.Scene {
     this.vx = this.vy = 0;
 
     this.buildingPolys = level.buildings.map((b) => b.poly);
-    const edges = this.buildingPolys.flatMap((poly) => poly.map((a, i): Seg => ({ a, b: poly[(i + 1) % poly.length], t: 4 })));
+    this.houses = level.buildings.map((b, i): House => {
+      const xs = b.poly.map((p) => p[0]), ys = b.poly.map((p) => p[1]);
+      const box = { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) };
+      const edges = b.poly.map((a, k): Seg => ({ a, b: b.poly[(k + 1) % b.poly.length], t: 4 }));
+      return { i, box, poly: b.poly, edges, bite: Math.max(box.w, box.h) * HOUSE_BITE, eaten: false };
+    });
+    const edges = this.houses.flatMap((h) => h.edges);
     this.segs = [...level.walls, ...level.counters, ...edges, ...(level.frontDoor ? [level.frontDoor] : [])];
     if (level.stairs) this.solids.push(level.stairs);
     this.doorFlap = null;
@@ -177,8 +201,10 @@ export class GameScene extends Phaser.Scene {
   private emitGoal() {
     let goal: Goal;
     if (!this.outside) goal = { from: START_R, to: DOOR_R, label: 'Dog door at', reached: 'Dog door: OPEN!' };
-    else if (!this.catcher) goal = { from: DOOR_R, to: CATCHER_R, label: 'Dog catcher alert at', reached: 'The dog catcher is coming!' };
-    else goal = { from: CATCHER_R, to: this.catcherEatR(), label: 'Eat the catcher at', reached: 'Eat the dog catcher!' };
+    else if (!this.catcher && !this.catcherEaten) goal = { from: DOOR_R, to: CATCHER_R, label: 'Dog catcher alert at', reached: 'The dog catcher is coming!' };
+    else if (!this.catcherEaten) goal = { from: CATCHER_R, to: this.catcherEatR(), label: 'Eat the catcher at', reached: 'Eat the dog catcher!' };
+    else if (this.r < this.houseEatR()) goal = { from: this.catcherEatR(), to: this.houseEatR(), label: 'Eat houses at', reached: 'Houses are on the menu!' };
+    else goal = { from: this.houseEatR(), to: WIN_R, label: 'Eat the neighborhood at', reached: 'Pepper ate the neighborhood!' };
     this.game.events.emit(EV.goal, goal);
   }
 
@@ -269,6 +295,8 @@ export class GameScene extends Phaser.Scene {
     this.shownR += (this.r - this.shownR) * (1 - Math.exp(-dt * 8));
     this.chomp *= Math.exp(-dt * 10);
     this.renderDog(dt);
+    // Once he's been gulped down and shrunk away, the dog catcher is gone for good.
+    if (this.catcher && this.catcher.eatenT >= 0.35) { this.catcher = null; this.world.catcher.show(false); }
     this.renderCatcher(dt);
     this.drawDoorArrow();
     this.zoom += ((this.outside ? OUTDOOR_ZOOM : 1) - this.zoom) * (1 - Math.exp(-dt * 2));
@@ -377,8 +405,13 @@ export class GameScene extends Phaser.Scene {
     for (const t of this.things) {
       if (t.eaten || !this.canEat(t.def.size)) continue;
       const d = t.box ? circleBoxDist(this.x, this.y, t.box) : Math.hypot(this.x - t.x, this.y - t.y) - t.rad * 0.6;
-      // Long Tongue reaches loose snacks; furniture still needs a proper bite.
-      if (d < (t.box ? this.r * 0.8 : reach)) this.eat(t);
+      // Long Tongue reaches loose snacks. Furniture is solid, so walls keep Pepper at arm's length:
+      // bumping into a piece she's big enough for is the bite.
+      if (d < (t.box ? this.r + 2 : reach)) this.eat(t);
+    }
+    // Houses are walled in, so Pepper just has to touch one she's big enough for.
+    for (const h of this.houses) {
+      if (!h.eaten && this.canEat(h.bite) && circleBoxDist(this.x, this.y, h.box) < this.r + 8) this.eatHouse(h);
     }
   }
 
@@ -396,6 +429,13 @@ export class GameScene extends Phaser.Scene {
   /** Pepper's size when she can eat the dog catcher, with Big Jaws counted. */
   private catcherEatR() {
     return CATCHER_SIZE / (EAT_RATIO + JAWS * this.n('jaws'));
+  }
+
+  /** Pepper's size when she can eat the smallest house still standing, with Big Jaws counted. */
+  private houseEatR() {
+    const left = this.houses.filter((h) => !h.eaten);
+    if (!left.length) return WIN_R;
+    return Math.min(...left.map((h) => h.bite)) / (EAT_RATIO + JAWS * this.n('jaws'));
   }
 
   private topSpeed() {
@@ -474,22 +514,25 @@ export class GameScene extends Phaser.Scene {
     this.world.addThings(added);
   }
 
-  private eat(t: Thing) {
-    t.eaten = true;
-    if (t.box) this.solids = this.solids.filter((b) => b !== t.box);
-    const before = this.r;
-    // Powerups that make each bite count for more.
+  /** Grows Pepper by a bite worth `gained` (added to r²), with the powerups that boost each bite. */
+  private grow(gained: number) {
     const now = this.time.now / 1000;
     this.streak = now - this.lastBite < STREAK_GAP ? Math.min(STREAK_CAP, this.streak + 1) : 0;
     this.lastBite = now;
     const boost = 1 + APPETITE * this.n('appetite') + STREAK * this.n('streak') * this.streak;
-    const gained = grownRadius(this.r, t.def.size) ** 2 - this.r * this.r;
     this.r = Math.sqrt(this.r * this.r + gained * boost);
     if (this.n('rush')) this.rushT = RUSH_TIME;
     this.eatenCount++;
     this.chomp = 1;
     this.biteT = 0;
     this.happy = 1;
+  }
+
+  private eat(t: Thing) {
+    t.eaten = true;
+    if (t.box) this.solids = this.solids.filter((b) => b !== t.box);
+    const before = this.r;
+    this.grow(grownRadius(this.r, t.def.size) ** 2 - this.r * this.r);
 
     const mouthX = this.x + Math.cos(this.heading) * this.r * 1.6, mouthY = this.y + Math.sin(this.heading) * this.r * 1.6;
     this.world.eat(t, mouthX, mouthY, this.r * 1.2);
@@ -499,9 +542,45 @@ export class GameScene extends Phaser.Scene {
     if (t.def.size >= before * 0.7) this.chompPop(sx, sy, before * ppc);
 
     this.game.events.emit(EV.eat, t.def.name);
+    this.afterGrow(before);
+  }
+
+  /** Phase 4: Pepper swallows a whole house, walls, roof and all. */
+  private eatHouse(h: House) {
+    h.eaten = true;
+    this.housesEaten++;
+    const gone = new Set(h.edges);
+    this.segs = this.segs.filter((sg) => !gone.has(sg));
+    this.buildingPolys = this.buildingPolys.filter((p) => p !== h.poly);
+    const before = this.r;
+    // A house is worth its whole footprint, so each one is a big jump.
+    this.grow(GROW_K * (h.box.w * h.box.h) / 4);
+
+    const mouthX = this.x + Math.cos(this.heading) * this.r * 1.6, mouthY = this.y + Math.sin(this.heading) * this.r * 1.6;
+    this.world.eatBuilding(h.i, mouthX, mouthY, this.r * 1.2);
+    const [sx, sy] = this.world.toScreen(mouthX, mouthY, this.r * 1.2), ppc = this.world.pxPerCm();
+    this.crumbBurst(sx, sy, before * ppc);
+    this.lastPop = 0;
+    this.chompPop(sx, sy, before * ppc);
+
+    this.game.events.emit(EV.eat, 'a house');
+    if (this.housesEaten === 1) this.game.events.emit(EV.toast, 'Pepper ate a whole house!');
+    this.afterGrow(before);
+  }
+
+  /** Everything that follows a bite: HUD, size toasts, powerup milestones, the next goal, the win. */
+  private afterGrow(before: number) {
     this.game.events.emit(EV.size, this.r);
     if (before < DOOR_R && this.r >= DOOR_R) {
       this.game.events.emit(EV.toast, 'Big enough! Head for the dog door in the garage.');
+    }
+    if (this.outside && this.catcherEaten) {
+      const houseR = this.houseEatR();
+      if (this.housesEaten === 0 && before < houseR && this.r >= houseR) {
+        this.game.events.emit(EV.toast, 'Pepper is big enough to eat a house! Go chomp one.');
+      }
+      this.emitGoal();
+      if (this.r >= WIN_R) { this.endRun('won'); return; }
     }
     if (this.n('streak') && this.streak >= 3 && this.streak % 3 === 0) {
       this.game.events.emit(EV.toast, `Munch streak ×${this.streak}!`);
@@ -566,7 +645,8 @@ export class GameScene extends Phaser.Scene {
   private endRun(outcome: RunStats['outcome']) {
     this.finished = true;
     const stats: RunStats = {
-      outcome, seconds: (this.time.now - this.startTime) / 1000, eaten: this.eatenCount, r: this.r, stacks: { ...this.stacks },
+      outcome, seconds: (this.time.now - this.startTime) / 1000, eaten: this.eatenCount, houses: this.housesEaten,
+      r: this.r, stacks: { ...this.stacks },
     };
     this.time.delayedCall(1100, () => this.game.events.emit(EV.done, stats));
   }
@@ -588,7 +668,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private stepCatcher(dt: number) {
-    if (!this.outside) return;
+    if (!this.outside || this.catcherEaten) return;
     if (!this.catcher) { if (this.r >= CATCHER_R) this.spawnCatcher(); return; }
     const c = this.catcher;
     const big = this.canEat(CATCHER_SIZE);
@@ -654,16 +734,21 @@ export class GameScene extends Phaser.Scene {
     this.endRun('caught');
   }
 
+  /** Pepper gulps the dog catcher down. That's not the end: next she starts on the houses. */
   private eatCatcher() {
     const c = this.catcher!;
     c.eatenT = 0;
-    this.chomp = 1; this.biteT = 0; this.happy = 1;
-    this.eatenCount++;
+    this.catcherEaten = true;
+    this.world.setArrow('catcher', false);
+    const before = this.r;
+    this.grow(grownRadius(this.r, CATCHER_SIZE) ** 2 - this.r * this.r);
     this.game.events.emit(EV.eat, 'the dog catcher');
     const [sx, sy] = this.world.toScreen(c.x, c.y, 100), ppc = this.world.pxPerCm();
     this.crumbBurst(sx, sy, this.r * ppc);
+    this.lastPop = 0;
     this.chompPop(sx, sy, this.r * ppc);
-    this.endRun('ate-catcher');
+    this.game.events.emit(EV.toast, `Pepper ate the dog catcher, net and all! Nothing can stop her now. Houses are on the menu at ${formatSize(this.houseEatR())}.`);
+    this.afterGrow(before);
   }
 
   /** Slides a walker (the dog catcher) out of walls, fences, buildings and furniture. */

@@ -42,3 +42,8 @@ export const CATCHER_EAT_R = CATCHER_SIZE / EAT_RATIO;
 export const CATCHER_SPEED = 330;
 /** His collision radius in cm. */
 export const CATCHER_RAD = 35;
+
+/** Phase 4: a house counts as this much of its longest side when deciding if Pepper can eat it, so smaller houses go first. */
+export const HOUSE_BITE = 0.55;
+/** Pepper's size when she has eaten enough of the neighborhood to win the run. */
+export const WIN_R = 700;
