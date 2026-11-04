@@ -283,7 +283,7 @@ export class UIScene extends Phaser.Scene {
   private showStart() {
     this.showCard(
       'Fat Pepper',
-      'Pepper is a tiny puppy with a big appetite. Eat anything smaller than you, grow big enough to jump out the dog door, then eat your way through the neighborhood and on into town. Every few sizes you pick a powerup, and they stack. Watch out for the dog catcher!',
+      'Pepper is a tiny puppy with a big appetite. Eat anything smaller than you, grow big enough to jump out the dog door, then eat your way through the neighborhood, the town and the countryside beyond. Every few sizes you pick a powerup, and they stack. Watch out for the dog catcher!',
       touchDevice()
         ? 'Put your thumb down anywhere and drag to steer Pepper. Drag further to run faster. Keyboards: arrow keys or WASD.'
         : 'Move with the arrow keys or WASD, or hold the mouse where Pepper should go.',
@@ -297,10 +297,11 @@ export class UIScene extends Phaser.Scene {
     const won = s.outcome === 'won';
     const houses = `${s.houses} house${s.houses === 1 ? '' : 's'}`;
     const hoods = `${s.hoods} whole neighborhood${s.hoods === 1 ? '' : 's'}`;
+    const towns = `${s.towns} whole town${s.towns === 1 ? '' : 's'}`;
     this.showCard(
       won ? 'Pepper ate it all!' : 'Gotcha!',
       won
-        ? `${formatSize(s.r)} of very good dog. She ate ${s.eaten} things in ${m}:${sec}, including ${houses} and ${hoods}.`
+        ? `${formatSize(s.r)} of very good dog. She ate ${s.eaten} things in ${m}:${sec}, including ${houses}, ${hoods} and ${towns}.`
         : `The dog catcher netted Pepper at ${formatSize(s.r)}, after she ate ${s.eaten} things in ${m}:${sec}. Off to the pound!`,
       this.buildLine(s.stacks) || (won ? 'Not a crumb left.' : 'Keep moving and keep eating: he speeds up as you grow.'),
       won ? 'Play again' : 'Try again',
