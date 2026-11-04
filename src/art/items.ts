@@ -1,4 +1,5 @@
 import { PAL } from './palette';
+import { TOWN_ITEMS } from './townItems';
 import type { ModelBuilder } from '../world3d/toon';
 
 /**
@@ -275,6 +276,7 @@ export const ITEMS: ItemDef[] = [
     b.box(0, 0, 32, 18, 0, 14, PAL.pink).cyl(0, 1, 7.5, 14, 0.5, PAL.white, { sz: 0.73 }).cyl(0, 1.5, 5, 14.3, 0.4, PAL.sky, { ...flat, sz: 0.7 });
     b.box(0, -6, 2, 4, 14, 3, PAL.greyLight).box(11.5, -1, 5, 7, 14, 2.5, PAL.mustard);
   } },
+  ...TOWN_ITEMS,
 ];
 
 export const ITEM_BY_ID: Record<string, ItemDef> = Object.fromEntries(ITEMS.map((d) => [d.id, d]));

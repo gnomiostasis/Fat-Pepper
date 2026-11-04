@@ -38,6 +38,8 @@ export interface RunStats {
   eaten: number;
   /** Houses Pepper ate. */
   houses: number;
+  /** Whole neighborhoods Pepper ate in town. */
+  hoods: number;
   r: number;
   stacks: Stacks;
 }

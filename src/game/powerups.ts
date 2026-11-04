@@ -64,9 +64,9 @@ export const SNEAKY = 0.1;
 
 /**
  * Pepper's radius at each powerup pick after the free one at the start: every ~3.5x of growth,
- * so a run gets 3 picks in all. The dog door is at 28, the catcher shows up at 40 and is eaten at 144.
+ * plus two more in town. The dog door is at 28, the catcher shows up at 40 and is eaten at 144, and town starts at 700.
  */
-export const MILESTONES = [24, 82];
+export const MILESTONES = [24, 82, 1400, 3200];
 
 export type Stacks = Partial<Record<PowerId, number>>;
 
