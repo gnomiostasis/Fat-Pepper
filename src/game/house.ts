@@ -30,6 +30,10 @@ export function buildHouse(): Level {
     ...chain([405, 305], [405, 200], [455, 153], [525, 153], [565, 195], [565, 243], [doorWallX, 243], [doorWallX, 578]),
     ...chain([doorWallX, 632], [doorWallX, 975], [855, 975], [855, 830], [647, 830], [647, 785], [595, 785]),
     ...chain([537, 785], [187, 785], [187, 305], [405, 305]),
+  ];
+
+  // Inside walls. A big enough Pepper can chomp through these, so she never gets boxed into a room.
+  const inner: Seg[] = [
     // Kitchen / dining divider, open at the bottom
     ...chain([405, 305], [405, 410]),
     // Dining room / piano room stubs
@@ -48,7 +52,7 @@ export function buildHouse(): Level {
     // Pantry: left and bottom walls, a short stub on the right, and a wide-open door into the garage
     ...chain([855, 560], [855, 637], [940, 637]),
     ...chain([940, 560], [940, 566]),
-  ];
+  ].map((s) => ({ ...s, inner: true }));
 
   const frontDoor: Seg = { a: P(537, 785), b: P(595, 785), t: T };
 
@@ -60,7 +64,7 @@ export function buildHouse(): Level {
 
   return {
     bounds: box(187, 153, doorWallX, 975),
-    walls,
+    walls: [...walls, ...inner],
     frontDoor,
     counters,
     stairs: box(400, 518, 480, 688),
@@ -79,7 +83,7 @@ export function buildHouse(): Level {
       // Living room
       spot('sofa', 810, 282),
       spot('coffeetable', 810, 372),
-      spot('armchair', 690, 330, 90),
+      spot('armchair', 695, 318, 90),
       spot('tv', 958, 410, 270),
       // Dining nook
       spot('roundtable', 485, 232),
