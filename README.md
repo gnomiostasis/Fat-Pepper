@@ -14,7 +14,7 @@ Once GitHub Pages is turned on (Settings → Pages → Source: **GitHub Actions*
 1. **Indoors.** Pepper starts as a 12 cm puppy in her bed in the living room of her real house (traced from a floor plan of it). She can eat anything up to about her own size, and every bite makes her bigger and rounder. Grow to 56 cm, then head through the pantry into the garage and jump out the dog door.
 2. **Outdoors.** Out the dog door is the neighborhood: streets, yards, houses and a lot more to eat. At 80 cm the dog catcher spots Pepper and gives chase with his net. Keep eating and keep moving; if he catches her, it is off to the pound.
 3. **Turning the tables.** At 2.88 m Pepper is bigger than the dog catcher. He runs, and she can eat him.
-4. **Eating the neighborhood.** With the dog catcher gone, Pepper keeps growing on cars and trees. At about 7.2 m she can eat the smallest houses (smaller houses go first; Big Jaws helps), and every house is a huge bite. Reach 14 m and she has eaten the neighborhood: that's the win.
+4. **Eating the neighborhood.** With the dog catcher gone, Pepper keeps growing on cars and trees. At about 7.2 m she can eat the smallest houses (smaller houses go first; Big Jaws helps), and every house is a huge bite. From then on everything on the map is edible, yard fences included. Reach 14 m and she has eaten the neighborhood: that's the win.
 
 **Powerups.** Pepper picks 1 of 3 random powerups at the start of the run, then again at 48 cm and 1.64 m. The game pauses for each pick: click or tap a card, or press 1, 2 or 3. Picks stack for the rest of the run, so every run builds differently:
 
