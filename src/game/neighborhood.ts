@@ -1,127 +1,236 @@
-// Phase 2 level: the neighborhood outside Pepper's house.
-// For now it's a made-up suburb of blocks, yards and houses, laid out fresh each
-// run. A real street map can replace `buildNeighborhood` later without the game
-// noticing, as long as it returns the same kind of Level.
+// Phase 2 level: the neighborhood outside Pepper's house, laid out fresh each run.
+// Built like a corner of the market town rather than a grid: a main road winding across
+// the map, a crescent looping off it round a little park, and side streets curving away
+// to cul-de-sacs. Every house faces its street, with a front yard, a driveway and a
+// fenced backyard that opens onto the green behind, and footpaths between the houses
+// every few lots so no backyard or green can ever box Pepper in.
 
 import { PAL } from '../art/palette';
-import type { Box, Building, FurnitureSpot, Level, Pt, Seg } from './level';
+import type { Building, FurnitureSpot, Level, Pt, Seg } from './level';
+import { disc, nearLine, smooth, strip, wander } from './town';
 
+const W = 24000, H = 19000;
 const ROAD = 700;
 const WALK = 180;
-const LOT = 1500;
-const LOTS_X = 3;
-const BLOCK_W = LOT * LOTS_X;
-const BLOCK_H = LOT * 2;
-const PX = ROAD + WALK * 2 + BLOCK_W;
-const PY = ROAD + WALK * 2 + BLOCK_H;
-const BLOCKS_X = 3;
-const BLOCKS_Y = 3;
+/** A lot's frontage along the street, and its depth back from the sidewalk. */
+const LOT_W = 1500, LOT_D = 1900;
 const SETBACK = 450;
 const FENCE_T = 8;
+/** Open green kept behind every backyard, wide enough for Pepper until she can eat the houses. */
+const GREEN = 400;
+/** The gap left for a footpath between houses every few lots. */
+const PATH_GAP = 1400;
+const CUL_R = 900;
 
 const WALLS = [PAL.pink, PAL.sky, PAL.mustard, PAL.cream, PAL.tealLight, PAL.white];
 const ROOFS = [PAL.rust, PAL.woodDark, PAL.navy, PAL.tealDark, PAL.grey];
 
-const rect = (b: Box): Pt[] => [[b.x, b.y], [b.x + b.w, b.y], [b.x + b.w, b.y + b.h], [b.x, b.y + b.h]];
 const pick = <T>(a: T[]) => a[Math.floor(Math.random() * a.length)];
 const rand = (lo: number, hi: number) => lo + Math.random() * (hi - lo);
+const deg = (rad: number) => (rad * 180) / Math.PI;
+
+interface Road { pts: Pt[]; cul?: Pt }
+/** A lot's own frame: its centre, `u` along the street and `v` pointing away from it. */
+interface Lot { c: Pt; u: Pt; v: Pt }
+
+/** A point given in a lot's frame, in map coordinates. */
+const at = (l: Lot, u: number, v: number): Pt => [l.c[0] + l.u[0] * u + l.v[0] * v, l.c[1] + l.u[1] * u + l.v[1] * v];
+/** A rectangle in a lot's frame, from u0,v0 to u1,v1. */
+const quad = (l: Lot, u0: number, v0: number, u1: number, v1: number): Pt[] => [at(l, u0, v0), at(l, u1, v0), at(l, u1, v1), at(l, u0, v1)];
+
+/** Do two convex polygons overlap? (Separating axis test.) */
+function overlap(a: Pt[], b: Pt[]) {
+  for (const poly of [a, b]) {
+    for (let i = 0; i < poly.length; i++) {
+      const [x0, y0] = poly[i], [x1, y1] = poly[(i + 1) % poly.length], nx = y0 - y1, ny = x1 - x0;
+      let amin = Infinity, amax = -Infinity, bmin = Infinity, bmax = -Infinity;
+      for (const [x, y] of a) { const d = x * nx + y * ny; amin = Math.min(amin, d); amax = Math.max(amax, d); }
+      for (const [x, y] of b) { const d = x * nx + y * ny; bmin = Math.min(bmin, d); bmax = Math.max(bmax, d); }
+      if (amax <= bmin || bmax <= amin) return false;
+    }
+  }
+  return true;
+}
 
 export function buildNeighborhood(): Level {
-  const W = BLOCKS_X * PX + ROAD, H = BLOCKS_Y * PY + ROAD;
-  const sidewalks: Box[] = [], roads: Box[] = [], driveways: Box[] = [];
-  const marks: Level['marks'] = [];
+  // ---- streets ----
+  const roads: Road[] = [];
+  const midY = H * rand(0.5, 0.56);
+  const main = smooth(wander([-800, midY + rand(-1200, 1200)], [W + 800, midY + rand(-1200, 1200)], 5, 1300), 400);
+  roads.push({ pts: main });
+  const mainY = (x: number) => main.reduce((b, p) => (Math.abs(p[0] - x) < Math.abs(b[0] - x) ? p : b))[1];
+  // A crescent looping north off the main road and back
+  const xa = W * rand(0.15, 0.19), xb = W * rand(0.81, 0.85), top = H * rand(0.195, 0.21);
+  roads.push({ pts: smooth([[xa, mainY(xa)], [xa + rand(-600, 600), (mainY(xa) + top) / 2], [W * 0.32, top], [W * 0.5, top + rand(-500, 300)], [W * 0.68, top], [xb + rand(-600, 600), (mainY(xb) + top) / 2], [xb, mainY(xb)]], 400) });
+  // Side streets curving south to cul-de-sacs
+  for (const fx of [rand(0.17, 0.22), rand(0.47, 0.53), rand(0.78, 0.83)]) {
+    const x0 = W * fx, end: Pt = [x0 + rand(-1500, 1500), H * rand(0.76, 0.78)];
+    roads.push({ pts: smooth(wander([x0, mainY(x0)], end, 3, 1400), 400), cul: end });
+  }
+  const halfRoad = ROAD / 2 + WALK;
+  const roadDist = (x: number, y: number, skip?: Road) => {
+    let best = Infinity;
+    for (const rd of roads) if (rd !== skip) {
+      best = Math.min(best, nearLine(x, y, rd.pts).d);
+      if (rd.cul) best = Math.min(best, Math.hypot(x - rd.cul[0], y - rd.cul[1]) - (CUL_R + WALK - halfRoad));
+    }
+    return best;
+  };
+
+  // ---- the park in the crescent, with a pond ----
+  const parkC: Pt = [W * 0.5 + rand(-1500, 1500), (top + mainY(W * 0.5)) / 2];
+  const pondR = rand(550, 750);
+  const pond = disc(parkC[0], parkC[1], pondR, 20);
+
+  const inside = (p: Pt, m: number) => p[0] > m && p[1] > m && p[0] < W - m && p[1] < H - m;
+
+  // ---- lots along every street ----
+  const lots: { lot: Lot; poly: Pt[]; road: Road; first: boolean }[] = [];
+  const taken: Pt[][] = [];
+  const tryLot = (lot: Lot, road: Road) => {
+    const poly = quad(lot, -LOT_W / 2, -LOT_D / 2, LOT_W / 2, LOT_D / 2);
+    // Kept clear of the sidewalks, the map's edge, the pond and every other lot, with green behind it
+    const back = quad(lot, -LOT_W * 0.47, -LOT_D / 2 + 40, LOT_W * 0.47, LOT_D / 2 + GREEN);
+    if (!back.every((p) => inside(p, 500))) return false;
+    if (poly.some(([x, y]) => roadDist(x, y, road) < halfRoad + 40) || roadDist(lot.c[0], lot.c[1], road) < halfRoad + LOT_D / 2 + GREEN * 2) return false;
+    if (poly.some(([x, y]) => nearLine(x, y, road.pts).d < halfRoad - 60) || nearLine(lot.c[0], lot.c[1], road.pts).d < halfRoad + LOT_D * 0.4) return false;
+    if (Math.hypot(lot.c[0] - parkC[0], lot.c[1] - parkC[1]) < pondR + LOT_D / 2 + 800) return false;
+    if (taken.some((t) => overlap(t, back))) return false;
+    taken.push(back);
+    return poly;
+  };
+
+  for (const road of roads) {
+    const pts = road.pts;
+    for (const side of [-1, 1]) {
+      let along = 0, next = rand(300, 900), run = 0, runLen = 3 + Math.floor(Math.random() * 3);
+      for (let i = 0; i < pts.length - 1; i++) {
+        const [ax, ay] = pts[i], [bx, by] = pts[i + 1], len = Math.hypot(bx - ax, by - ay) || 1;
+        while (next < along + len) {
+          const t = (next - along) / len, x = ax + (bx - ax) * t, y = ay + (by - ay) * t;
+          const tx = (bx - ax) / len, ty = (by - ay) / len, nx = -ty * side, ny = tx * side;
+          const off = halfRoad + LOT_D / 2;
+          const lot: Lot = { c: [x + nx * off, y + ny * off], u: [tx * side, ty * side], v: [nx, ny] };
+          const poly = tryLot(lot, road);
+          if (poly) {
+            lots.push({ lot, poly, road, first: run === 0 });
+            next += LOT_W;
+            // A footpath between the houses every few lots, so there's always a way round the back
+            if (++run >= runLen) { run = 0; runLen = 3 + Math.floor(Math.random() * 3); next += PATH_GAP; }
+          } else {
+            next += 150;
+            run = 0;
+          }
+        }
+        along += len;
+      }
+    }
+    // A ring of houses round the cul-de-sac, facing in
+    if (road.cul) {
+      const [cx, cy] = road.cul, a0 = rand(0, Math.PI * 2);
+      for (let k = 0; k < 5; k++) {
+        const a = a0 + (k / 5) * Math.PI * 2, vx = Math.cos(a), vy = Math.sin(a), off = CUL_R + WALK + LOT_D / 2;
+        const lot: Lot = { c: [cx + vx * off, cy + vy * off], u: [-vy, vx], v: [vx, vy] };
+        const poly = tryLot(lot, road);
+        if (poly) lots.push({ lot, poly, road, first: true });
+      }
+    }
+  }
+
+  // ---- houses, yards, driveways and fences ----
   const buildings: Building[] = [];
   const walls: Seg[] = [];
   const furniture: FurnitureSpot[] = [];
   const rooms: Level['rooms'] = [];
-  const doorways: Pt[] = [];
+  const driveways: Pt[][] = [];
+  const homeLot = lots.filter((l) => l.road === roads[0])
+    .sort((a, b) => Math.hypot(a.lot.c[0] - W / 2, a.lot.c[1] - H / 2) - Math.hypot(b.lot.c[0] - W / 2, b.lot.c[1] - H / 2))[0] ?? lots[0];
+  let spawn = { x: W / 2, y: H / 2 };
+  const box = (p: Pt, half: number) => ({ x: p[0] - half, y: p[1] - half, w: half * 2, h: half * 2 });
 
-  // Streets in a grid, with a dashed line down the middle
-  for (let i = 0; i <= BLOCKS_X; i++) roads.push({ x: i * PX, y: 0, w: ROAD, h: H });
-  for (let j = 0; j <= BLOCKS_Y; j++) roads.push({ x: 0, y: j * PY, w: W, h: ROAD });
-  const onCross = (x: number, y: number) => (x % PX) < ROAD + 100 && (y % PY) < ROAD + 100;
-  for (let i = 0; i <= BLOCKS_X; i++) {
-    for (let y = 0; y < H; y += 600) if (!onCross(i * PX + ROAD / 2, y + 150) && !onCross(i * PX + ROAD / 2, y + 450)) {
-      marks.push({ box: { x: i * PX + ROAD / 2 - 7, y: y + 150, w: 14, h: 300 }, color: PAL.yellow });
+  for (const l of lots) {
+    const { lot } = l;
+    const hw = rand(820, 980), hd = rand(680, 800);
+    const front = -LOT_D / 2 + SETBACK, back = front + hd;
+    buildings.push({ poly: quad(lot, -hw / 2, front, hw / 2, back), height: rand(240, 300), wall: pick(WALLS), roof: pick(ROOFS) });
+
+    // Driveway from the garage end of the house to the sidewalk, sometimes with a car on it
+    driveways.push(quad(lot, hw / 2 - 320, -LOT_D / 2, hw / 2 - 20, front));
+    const dc = at(lot, hw / 2 - 170, (-LOT_D / 2 + front) / 2);
+    if (l !== homeLot && Math.random() < 0.55) furniture.push({ id: 'car', x: dc[0], y: dc[1], rot: deg(Math.atan2(lot.v[1], lot.v[0])) });
+
+    // Side fences round the backyard, stopping short of the house so there's a way through
+    walls.push({ a: at(lot, LOT_W / 2, back + 120), b: at(lot, LOT_W / 2, LOT_D / 2), t: FENCE_T });
+    if (l.first) walls.push({ a: at(lot, -LOT_W / 2, back + 120), b: at(lot, -LOT_W / 2, LOT_D / 2), t: FENCE_T });
+
+    // Front yard and backyard, each with their own kind of clutter, and a tree or two
+    rooms.push({ box: box(at(lot, 0, (-LOT_D / 2 + front) / 2), 200), extras: { gnome: 1, flamingo: Math.random() < 0.4 ? 2 : 0, mailbox: 1, newspaper: 1 } });
+    rooms.push({ box: box(at(lot, 0, (back + LOT_D / 2) / 2), 300), extras: { bbq: Math.random() < 0.5 ? 1 : 0, lawnchair: 2, kiddiepool: Math.random() < 0.3 ? 1 : 0, doghouse: Math.random() < 0.3 ? 1 : 0, bike: 1, frisbee: 2 } });
+    // Trees stay off the gaps between houses, so they can't close one off
+    const tree = at(lot, (Math.random() < 0.5 ? -1 : 1) * rand(250, 420), LOT_D / 2 - 240);
+    furniture.push({ id: 'tree', x: tree[0], y: tree[1], rot: 0 });
+    if (Math.random() < 0.5) {
+      const t2 = at(lot, rand(-hw / 2 + 260, -120), -LOT_D / 2 + 215);
+      furniture.push({ id: 'tree', x: t2[0], y: t2[1], rot: 0 });
     }
-  }
-  for (let j = 0; j <= BLOCKS_Y; j++) {
-    for (let x = 0; x < W; x += 600) if (!onCross(x + 150, j * PY + ROAD / 2) && !onCross(x + 450, j * PY + ROAD / 2)) {
-      marks.push({ box: { x: x + 150, y: j * PY + ROAD / 2 - 7, w: 300, h: 14 }, color: PAL.yellow });
-    }
-  }
 
-  let home: Box | null = null;
-  for (let by = 0; by < BLOCKS_Y; by++) for (let bx = 0; bx < BLOCKS_X; bx++) {
-    const x0 = bx * PX + ROAD, y0 = by * PY + ROAD;
-    // Sidewalk around the block, and the grass inside it
-    const sw = { x: x0, y: y0, w: PX - ROAD, h: PY - ROAD };
-    sidewalks.push(
-      { x: sw.x, y: sw.y, w: sw.w, h: WALK }, { x: sw.x, y: sw.y + sw.h - WALK, w: sw.w, h: WALK },
-      { x: sw.x, y: sw.y, w: WALK, h: sw.h }, { x: sw.x + sw.w - WALK, y: sw.y, w: WALK, h: sw.h },
-    );
-    rooms.push(
-      { box: { x: sw.x, y: sw.y, w: sw.w, h: WALK } }, { box: { x: sw.x, y: sw.y + sw.h - WALK, w: sw.w, h: WALK } },
-    );
-    const bx0 = x0 + WALK, by0 = y0 + WALK, mid = by0 + LOT;
-
-    // Back fence down the middle of the block, with a gate into every backyard
-    const gates = Array.from({ length: LOTS_X }, (_, c) => bx0 + c * LOT + rand(300, LOT - 500));
-    let fx = bx0;
-    for (const g of gates) { walls.push({ a: [fx, mid], b: [g, mid], t: FENCE_T }); doorways.push([g + 100, mid]); fx = g + 200; }
-    walls.push({ a: [fx, mid], b: [bx0 + BLOCK_W, mid], t: FENCE_T });
-
-    for (let row = 0; row < 2; row++) for (let c = 0; c < LOTS_X; c++) {
-      const lot: Box = { x: bx0 + c * LOT, y: by0 + row * LOT, w: LOT, h: LOT };
-      const hw = rand(820, 980), hd = rand(680, 800);
-      const hx = lot.x + (LOT - hw) / 2;
-      // Row 0 faces the street above it, row 1 the street below.
-      const hy = row === 0 ? lot.y + SETBACK : lot.y + LOT - SETBACK - hd;
-      const house: Box = { x: hx, y: hy, w: hw, h: hd };
-      buildings.push({ poly: rect(house), height: rand(240, 300), wall: pick(WALLS), roof: pick(ROOFS) });
-      if (bx === 1 && by === 1 && row === 0 && c === 1) home = house;
-
-      // Driveway from the garage end of the house to the sidewalk, sometimes with a car on it
-      const dw: Box = row === 0
-        ? { x: hx + hw - 320, y: lot.y, w: 300, h: SETBACK }
-        : { x: hx + hw - 320, y: hy + hd, w: 300, h: SETBACK };
-      driveways.push(dw);
-      if (Math.random() < 0.55) furniture.push({ id: 'car', x: dw.x + dw.w / 2, y: dw.y + dw.h / 2, rot: 90 });
-
-      // Side fences around the backyard, stopping at the back of the house
-      const backY = row === 0 ? hy + hd : hy;
-      if (c > 0) walls.push({ a: [lot.x, mid], b: [lot.x, backY + (row === 0 ? 120 : -120)], t: FENCE_T });
-
-      // Front yard and backyard, each with their own kind of clutter, and a tree or two
-      const front: Box = row === 0 ? { x: lot.x, y: lot.y, w: LOT, h: SETBACK } : { x: lot.x, y: hy + hd, w: LOT, h: SETBACK };
-      const back: Box = row === 0 ? { x: lot.x, y: hy + hd, w: LOT, h: mid - hy - hd } : { x: lot.x, y: mid, w: LOT, h: hy - mid };
-      rooms.push({ box: front, extras: { gnome: 1, flamingo: Math.random() < 0.4 ? 2 : 0, mailbox: 1, newspaper: 1 } });
-      rooms.push({ box: back, extras: { bbq: Math.random() < 0.5 ? 1 : 0, lawnchair: 2, kiddiepool: Math.random() < 0.3 ? 1 : 0, doghouse: Math.random() < 0.3 ? 1 : 0, bike: 1, frisbee: 2 } });
-      const tx = Math.random() < 0.5 ? lot.x + 260 : lot.x + LOT - 260;
-      furniture.push({ id: 'tree', x: tx, y: back.y + back.h / 2 + rand(-80, 80), rot: 0 });
-      if (Math.random() < 0.5) furniture.push({ id: 'tree', x: lot.x + rand(200, 500), y: front.y + front.h / 2, rot: 0 });
-    }
+    // Pepper comes out of the dog door on the side of her house, by the driveway
+    if (l === homeLot) { const s = at(lot, hw / 2 + 90, (front + back) / 2 + hd * 0.1); spawn = { x: s[0], y: s[1] }; }
   }
 
-  // Pepper comes out of the dog door on the side of her house, by the driveway
-  const h = home!;
-  const spawn = { x: h.x + h.w + 90, y: h.y + h.h * 0.6 };
+  // ---- the park: trees round the pond, and benches ----
+  for (let i = 0; i < 14; i++) {
+    const a = rand(0, Math.PI * 2), d = rand(pondR + 500, pondR + 2600), x = parkC[0] + Math.cos(a) * d, y = parkC[1] + Math.sin(a) * d;
+    if (roadDist(x, y) < halfRoad + 400 || taken.some((t) => overlap(t, disc(x, y, 300, 6)))) continue;
+    if (furniture.some((f) => f.id === 'tree' && Math.hypot(f.x - x, f.y - y) < 800)) continue;
+    furniture.push({ id: 'tree', x, y, rot: 0 });
+  }
+  rooms.push({ box: box(parkC, pondR + 1800), extras: { bench: 5, bush: 8, ball: 4, frisbee: 3, sandwich: 3 } });
 
+  // ---- paint, and where loose things and the dog catcher can turn up ----
+  const marks: Level['marks'] = [];
+  const catcherSpawns: Pt[] = [];
+  for (const road of roads) {
+    let along = 0, next = 300, nextSpawn = 600;
+    for (let i = 0; i < road.pts.length - 1; i++) {
+      const [ax, ay] = road.pts[i], [bx, by] = road.pts[i + 1], len = Math.hypot(bx - ax, by - ay) || 1;
+      while (next < along + len) {
+        const t = (next - along) / len, x = ax + (bx - ax) * t, y = ay + (by - ay) * t;
+        // A dash down the middle, but not across a junction
+        if (roadDist(x, y, road) > halfRoad + 300 && (!road.cul || Math.hypot(x - road.cul[0], y - road.cul[1]) > CUL_R + 300)) {
+          marks.push({ box: { x: x - 150, y: y - 7, w: 300, h: 14 }, color: PAL.yellow, rot: deg(Math.atan2(by - ay, bx - ax)) });
+        }
+        next += 600;
+      }
+      while (nextSpawn < along + len) {
+        const t = (nextSpawn - along) / len, x = ax + (bx - ax) * t, y = ay + (by - ay) * t;
+        if (x > 300 && y > 300 && x < W - 300 && y < H - 300) {
+          catcherSpawns.push([x, y]);
+          rooms.push({ box: box([x, y], 500), extras: {} });
+        }
+        nextSpawn += 1500;
+      }
+      along += len;
+    }
+  }
+
+  const culs = roads.flatMap((rd) => (rd.cul ? [rd.cul] : []));
   const floors = [
-    ...sidewalks.map((b) => ({ poly: rect(b), texture: 'floor-sidewalk' })),
-    ...driveways.map((b) => ({ poly: rect(b), texture: 'floor-sidewalk' })),
-    ...roads.map((b) => ({ poly: rect(b), texture: 'floor-asphalt' })),
+    { poly: pond, texture: 'floor-water' },
+    ...roads.flatMap((rd) => strip(rd.pts, ROAD + WALK * 2, !!rd.cul)).map((poly) => ({ poly, texture: 'floor-sidewalk' })),
+    ...culs.map(([x, y]) => ({ poly: disc(x, y, CUL_R + WALK, 20), texture: 'floor-sidewalk' })),
+    ...driveways.map((poly) => ({ poly, texture: 'floor-sidewalk' })),
+    ...roads.flatMap((rd) => strip(rd.pts, ROAD, !!rd.cul)).map((poly) => ({ poly, texture: 'floor-asphalt' })),
+    ...culs.map(([x, y]) => ({ poly: disc(x, y, CUL_R, 20), texture: 'floor-asphalt' })),
   ];
-  for (const r of roads) rooms.push({ box: r, extras: {} });
 
   return {
     bounds: { x: 0, y: 0, w: W, h: H },
     walls, wallStyle: { color: PAL.white, height: 75 }, counters: [], buildings,
-    floors, marks, furniture, decals: [], rooms, doorways,
-    wallThickness: FENCE_T, spawn,
-    catcherSpawns: Array.from({ length: (BLOCKS_X + 1) * (BLOCKS_Y + 1) }, (_, i): Pt => [
-      (i % (BLOCKS_X + 1)) * PX + ROAD / 2, Math.floor(i / (BLOCKS_X + 1)) * PY + ROAD / 2,
-    ]),
+    floors, marks, furniture, decals: [], rooms, doorways: [],
+    water: [pond],
+    paths: roads.map((rd) => ({ pts: rd.pts, w: ROAD })),
+    wallThickness: FENCE_T, spawn, catcherSpawns,
     scatter: {
       ball: 40, frisbee: 30, newspaper: 30, sock: 30, shoe: 30, sandwich: 40, bone: 40, can: 30, donut: 40,
       book: 20, teddy: 20, slipper: 20, plant: 30, cushion: 20, box: 30, basket: 20, stool: 15,

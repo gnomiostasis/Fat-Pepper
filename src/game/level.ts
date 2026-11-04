@@ -29,8 +29,8 @@ export interface Level {
   stairs?: Box;
   buildings: Building[];
   floors: { poly: Pt[]; texture: string }[];
-  /** Paint on the ground, like the dashes down the middle of a street. */
-  marks: { box: Box; color: string }[];
+  /** Paint on the ground, like the dashes down the middle of a street. `rot` turns it about its centre, in degrees clockwise. */
+  marks: { box: Box; color: string; rot?: number }[];
   furniture: FurnitureSpot[];
   /** Flat things on the floor that Pepper walks over. */
   decals: FurnitureSpot[];

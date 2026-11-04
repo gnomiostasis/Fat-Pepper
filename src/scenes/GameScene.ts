@@ -39,6 +39,8 @@ interface House {
   edges: Seg[];
   /** How big it counts as for eating. */
   bite: number;
+  /** Its footprint in cm², which is how much it grows Pepper. */
+  area: number;
   eaten: boolean;
 }
 
@@ -208,7 +210,9 @@ export class GameScene extends Phaser.Scene {
       const xs = b.poly.map((p) => p[0]), ys = b.poly.map((p) => p[1]);
       const box = { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) };
       const edges = b.poly.map((a, k): Seg => ({ a, b: b.poly[(k + 1) % b.poly.length], t: 4 }));
-      return { i, box, poly: b.poly, edges, bite: Math.max(box.w, box.h) * HOUSE_BITE, eaten: false };
+      // The longest wall, so a house turned to face a curving street isn't judged by its slanted bounding box.
+      const long = Math.max(...edges.map((e) => Math.hypot(e.b[0] - e.a[0], e.b[1] - e.a[1])));
+      return { i, box, poly: b.poly, edges, bite: long * HOUSE_BITE, area: polyArea(b.poly), eaten: false };
     });
     const edges = this.houses.flatMap((h) => h.edges);
     this.fences = level.buildings.length
@@ -702,7 +706,7 @@ export class GameScene extends Phaser.Scene {
     this.buildingPolys = this.buildingPolys.filter((p) => p !== h.poly);
     const before = this.r;
     // A house is worth its whole footprint, so each one is a big jump.
-    this.grow(GROW_K * (h.box.w * h.box.h) / 4);
+    this.grow(GROW_K * h.area / 4);
 
     const mouthX = this.x + Math.cos(this.heading) * this.r * 1.6, mouthY = this.y + Math.sin(this.heading) * this.r * 1.6;
     this.world.eatBuilding(h.i, mouthX, mouthY, this.r * 1.2);
@@ -1053,6 +1057,13 @@ export class GameScene extends Phaser.Scene {
     const a = Math.atan2(door.y - this.y, door.x - this.x), dist = this.shownR * 2.3;
     this.world.setArrow('door', true, this.x + Math.cos(a) * dist, this.y + Math.sin(a) * dist, a, this.shownR * 0.45);
   }
+}
+
+/** Area of a simple polygon (shoelace formula). */
+function polyArea(poly: Pt[]) {
+  let a = 0;
+  for (let i = 0; i < poly.length; i++) { const [x0, y0] = poly[i], [x1, y1] = poly[(i + 1) % poly.length]; a += x0 * y1 - x1 * y0; }
+  return Math.abs(a) / 2;
 }
 
 function circleBoxDist(x: number, y: number, b: Box) {

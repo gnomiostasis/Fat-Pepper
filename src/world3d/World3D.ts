@@ -237,7 +237,7 @@ export class World3D {
     // Paint on the ground
     // Paint sits just above the top floor, so it shows over the roads.
     const paintH = 0.6 + Math.max(0, layer - 1) * 0.25 * tile;
-    for (const m of house.marks) walls.box(m.box.x + m.box.w / 2, m.box.y + m.box.h / 2, m.box.w, m.box.h, 0, paintH, m.color, { ink: false });
+    for (const m of house.marks) walls.box(m.box.x + m.box.w / 2, m.box.y + m.box.h / 2, m.box.w, m.box.h, 0, paintH, m.color, { ink: false, ry: -(m.rot ?? 0) * Math.PI / 180 });
     if (house.walls.some((sg) => !outdoors && !sg.inner) || fd || st || house.marks.length) this.root.add(inkedMesh(walls.build()));
 
     // Buildings: solid walls with a roof slab on top. Each is its own mesh, centred on
