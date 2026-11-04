@@ -23,6 +23,7 @@ export interface Placed {
 }
 
 interface Kind {
+  def: ItemDef;
   built: ReturnType<ModelBuilder['build']>;
   fill: THREE.InstancedMesh;
   line: THREE.InstancedMesh | null;
@@ -50,6 +51,12 @@ export class World3D {
   private root = new THREE.Group();
   private models = new Map<string, ReturnType<ModelBuilder['build']>>();
   private kinds: Kind[] = [];
+  /**
+   * Things are drawn in square chunks of the map, one instanced mesh per kind per chunk, so on a big
+   * map (the town) only the chunks near the camera get drawn. 0 means one chunk for the whole level.
+   */
+  private chunk = 0;
+  private sph = new THREE.Sphere();
   private anims: Anim[] = [];
   private wobbles = new Map<Placed, number>();
   private flap = new THREE.Group();
@@ -145,10 +152,15 @@ export class World3D {
       return t;
     };
 
-    // Grass all around
-    const b = house.bounds, pad = 6000;
+    // Big levels get split into chunks that are drawn only when they're on screen.
+    const b = house.bounds, span = Math.max(b.w, b.h);
+    this.chunk = span > 60000 ? span / 4 : 0;
+    const tile = house.tile ?? 1;
+
+    // Grass all around, reaching past the edges however far back the camera gets
+    const pad = Math.max(6000, span);
     const grassTex = tex('floor-grass');
-    grassTex.repeat.set((b.w + pad) / FLOOR_TILE_WORLD, (b.h + pad) / FLOOR_TILE_WORLD);
+    grassTex.repeat.set((b.w + pad) / (FLOOR_TILE_WORLD * tile), (b.h + pad) / (FLOOR_TILE_WORLD * tile));
     const grass = new THREE.Mesh(new THREE.PlaneGeometry(b.w + pad, b.h + pad).rotateX(-Math.PI / 2), paint({ map: grassTex }));
     grass.position.set(b.x + b.w / 2, -1, b.y + b.h / 2);
     grass.receiveShadow = true;
@@ -157,11 +169,11 @@ export class World3D {
     // Floors, each clipped to its room
     house.floors.forEach((f, i) => {
       const t = tex(f.texture);
-      t.repeat.set(1 / FLOOR_TILE_WORLD, 1 / FLOOR_TILE_WORLD);
+      t.repeat.set(1 / (FLOOR_TILE_WORLD * tile), 1 / (FLOOR_TILE_WORLD * tile));
       const geo = new THREE.ShapeGeometry(new THREE.Shape(f.poly.map(([x, y]) => new THREE.Vector2(x, -y))));
       geo.rotateX(-Math.PI / 2);
       const mesh = new THREE.Mesh(geo, paint({ map: t }));
-      mesh.position.y = i * 0.25;
+      mesh.position.y = i * 0.25 * tile;
       mesh.receiveShadow = true;
       this.root.add(mesh);
     });
@@ -292,18 +304,30 @@ export class World3D {
     return m;
   }
 
-  /** Adds every item and piece of furniture, one instanced mesh per kind of thing. */
+  /** Adds every item and piece of furniture, one instanced mesh per kind of thing (and per chunk of a big map). */
   addThings(things: Placed[]) {
     const byId = new Map<string, Placed[]>();
-    for (const t of things) byId.set(t.def.id, [...(byId.get(t.def.id) ?? []), t]);
+    const C = this.chunk;
+    for (const t of things) {
+      const key = C ? `${t.def.id}:${Math.floor(t.x / C)}:${Math.floor(t.y / C)}` : t.def.id;
+      let list = byId.get(key);
+      if (!list) { list = []; byId.set(key, list); }
+      list.push(t);
+    }
     for (const [, list] of byId) {
-      const built = this.model(list[0].def);
+      const def = list[0].def, built = this.model(def);
       const fill = new THREE.InstancedMesh(built.fill, paint(), list.length);
-      fill.castShadow = true; fill.receiveShadow = true; fill.frustumCulled = false;
+      fill.castShadow = true; fill.receiveShadow = true;
       const line = built.line ? new THREE.InstancedMesh(built.line, ink(built.size), list.length) : null;
-      if (line) line.frustumCulled = false;
-      const kind: Kind = { built, fill, line };
+      const kind: Kind = { def, built, fill, line };
       list.forEach((t, i) => { t.slot = { kind, i }; this.place(t); });
+      // Chunked meshes are skipped while they're off screen; a single mesh for the whole level is always drawn.
+      fill.frustumCulled = !!C;
+      if (line) line.frustumCulled = !!C;
+      if (C) {
+        fill.computeBoundingSphere();
+        if (line) line.boundingSphere = fill.boundingSphere!.clone();
+      }
       this.root.add(fill);
       if (line) this.root.add(line);
       this.kinds.push(kind);
@@ -371,6 +395,13 @@ export class World3D {
   /** Something slid across the floor (the snack magnet): redraw it where it is now. */
   move(t: Placed) {
     this.place(t);
+    // Keep its chunk's bounds around it, so the chunk isn't skipped while it's on screen.
+    const fill = t.slot?.kind.fill;
+    if (fill?.frustumCulled && fill.boundingSphere) {
+      this.sph.set(this.v.set(t.x, 0, t.y), t.def.size);
+      fill.boundingSphere.union(this.sph);
+      t.slot!.kind.line?.boundingSphere?.copy(fill.boundingSphere);
+    }
   }
 
   /** A quick rock, for something Pepper bumped but is too small to eat. */
@@ -469,6 +500,13 @@ export class World3D {
     }
     this.flap.rotation.z = this.flapAngle;
     for (const a of Object.values(this.arrows)) if (a.visible) a.scale.multiplyScalar(1 + 0.08 * Math.sin(this.time * 6));
+    // Things too small to see from this far back (a crumb when Pepper is the size of a house) aren't drawn.
+    const px = this.pxPerCm();
+    for (const k of this.kinds) {
+      const show = k.def.size * px > 0.6;
+      k.fill.visible = show;
+      if (k.line) k.line.visible = show;
+    }
     this.placeCamera();
     this.renderer.render(this.scene, this.camera);
   }

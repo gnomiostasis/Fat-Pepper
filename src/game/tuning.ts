@@ -33,7 +33,8 @@ export const OUTDOOR_ZOOM = 1.35;
 export function formatSize(r: number) {
   const cm = r * 2;
   if (cm < 100) return `${cm.toFixed(cm < 20 ? 1 : 0)} cm`;
-  return `${(cm / 100).toFixed(2)} m`;
+  const m = cm / 100;
+  return `${m.toFixed(m < 10 ? 2 : m < 100 ? 1 : 0)} m`;
 }
 
 /** Phase 2: Pepper's size when the dog catcher spots her and gives chase. */
@@ -49,5 +50,7 @@ export const CATCHER_RAD = 35;
 
 /** Phase 4: a house counts as this much of its longest side when deciding if Pepper can eat it, so smaller houses go first. */
 export const HOUSE_BITE = 0.55;
-/** Pepper's size when she has eaten enough of the neighborhood to win the run. */
-export const WIN_R = 700;
+/** Pepper's size when she has outgrown the neighborhood and can waddle off to town. */
+export const TOWN_R = 700;
+/** Phase 5: Pepper's size when she has eaten enough of the town to win the run. */
+export const WIN_R = 7000;

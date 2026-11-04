@@ -1,4 +1,4 @@
-// The shape of a level: Pepper's house in Phase 1, the neighborhood in Phase 2.
+// The shape of a level: Pepper's house, the neighborhood, then the town.
 // Everything is in centimetres, top-down, with y running down the screen.
 
 export interface Box { x: number; y: number; w: number; h: number }
@@ -40,6 +40,8 @@ export interface Level {
   /** The dog door: a gap in the garage's outside wall. `x` is the wall's inner face. */
   door?: { x: number; y: number; half: number };
   wallThickness: number;
+  /** How many times bigger the floor patterns are drawn, for levels built at a bigger scale (the town). */
+  tile?: number;
   spawn: { x: number; y: number };
   /** Where the dog catcher can come from (Phase 2). */
   catcherSpawns?: Pt[];
