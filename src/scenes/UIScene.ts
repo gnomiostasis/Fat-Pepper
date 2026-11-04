@@ -3,6 +3,7 @@ import { PAL, hexNum } from '../art/palette';
 import { MILESTONES, POWER_BY_ID, PowerDef, PowerId, Stacks } from '../game/powerups';
 import { DOOR_R, START_R, formatSize } from '../game/tuning';
 import { EV, Goal, PowerState, RunStats } from './events';
+import { touchDevice } from './joystick';
 
 const DISPLAY = '"Lilita One", "Arial Rounded MT Bold", sans-serif';
 const BODY = '"Nunito", "Segoe UI", system-ui, sans-serif';
@@ -283,7 +284,9 @@ export class UIScene extends Phaser.Scene {
     this.showCard(
       'Fat Pepper',
       'Pepper is a tiny puppy with a big appetite. Eat anything smaller than you, grow big enough to jump out the dog door, then eat your way around the neighborhood. Every few sizes you pick a powerup, and they stack. Watch out for the dog catcher!',
-      'Move with the arrow keys or WASD, or hold the mouse or your finger where Pepper should go.',
+      touchDevice()
+        ? 'Put your thumb down anywhere and drag to steer Pepper. Drag further to run faster. Keyboards: arrow keys or WASD.'
+        : 'Move with the arrow keys or WASD, or hold the mouse where Pepper should go.',
       'Start',
       () => this.game.events.emit(EV.start),
     );

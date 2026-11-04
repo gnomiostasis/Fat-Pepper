@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { ITEM_BY_ID, ItemDef } from '../art/items';
 import { PAL, hexNum } from '../art/palette';
 import { CHOMP_WORDS, chompKey } from '../art/textures';
+import { Joystick, isTouch } from './joystick';
 import { buildHouse } from '../game/house';
 import type { Box, Level, Pt, Seg } from '../game/level';
 import { buildNeighborhood } from '../game/neighborhood';
@@ -83,6 +84,7 @@ export class GameScene extends Phaser.Scene {
   private segs: Seg[] = [];
   private doorFlap: Box | null = null;
   private world!: World3D;
+  private stick!: Joystick;
   private keys!: Record<'up' | 'down' | 'left' | 'right' | 'w' | 'a' | 's' | 'd', Phaser.Input.Keyboard.Key>;
 
   private r = START_R;
@@ -149,6 +151,9 @@ export class GameScene extends Phaser.Scene {
     this.keys = kb.addKeys({
       up: 'UP', down: 'DOWN', left: 'LEFT', right: 'RIGHT', w: 'W', a: 'A', s: 'S', d: 'D',
     }) as GameScene['keys'];
+    // Phones and tablets steer with a thumbstick that appears wherever a finger goes down.
+    this.stick = new Joystick(this);
+    this.stick.setEnabled(() => this.started && !this.finished && !this.picking);
 
     const onStart = () => { this.started = true; this.startTime = this.time.now; };
     this.game.events.on(EV.start, onStart);
@@ -295,6 +300,7 @@ export class GameScene extends Phaser.Scene {
     this.shownR += (this.r - this.shownR) * (1 - Math.exp(-dt * 8));
     this.chomp *= Math.exp(-dt * 10);
     this.renderDog(dt);
+    this.stick.draw(dt);
     // Once he's been gulped down and shrunk away, the dog catcher is gone for good.
     if (this.catcher && this.catcher.eatenT >= 0.35) { this.catcher = null; this.world.catcher.show(false); }
     this.renderCatcher(dt);
@@ -305,7 +311,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private step(time: number, dt: number) {
-    // Steering: keys, or hold the mouse/finger where Pepper should go
+    // Steering: keys, a thumbstick on touch screens, or hold the mouse where Pepper should go
     let dx = 0, dy = 0;
     const k = this.keys;
     if (k.left.isDown || k.a.isDown) dx -= 1;
@@ -315,7 +321,18 @@ export class GameScene extends Phaser.Scene {
     const p = this.input.activePointer;
     // Slows to a stop right under the pointer instead of jittering around it
     let ease = 1;
-    if (p.isDown) {
+    if (this.stick.active) {
+      const v = this.stick.vec, m = v.length();
+      if (m > 0) {
+        // Turn the screen drag into a floor direction, so "up" on the stick is always up on screen.
+        const [sx, sy] = this.world.toScreen(this.x, this.y), reach = 100 / m;
+        const wp = this.world.ground(sx + v.x * reach, sy + v.y * reach);
+        if (wp) {
+          const px = wp[0] - this.x, py = wp[1] - this.y, d = Math.hypot(px, py);
+          if (d > 0) { dx = px / d; dy = py / d; ease = m; }
+        }
+      }
+    } else if (p.isDown && !isTouch(p)) {
       const wp = this.world.ground(p.x, p.y);
       if (wp) {
         const px = wp[0] - this.x, py = wp[1] - this.y, d = Math.hypot(px, py);
