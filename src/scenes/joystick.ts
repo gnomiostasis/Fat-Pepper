@@ -2,8 +2,7 @@ import Phaser from 'phaser';
 
 /**
  * A floating thumbstick for phones and tablets: put a finger down anywhere and drag.
- * The stick appears where the finger lands, and its base trails the finger if it drags
- * past the rim, so turning around never needs a long swipe back.
+ * The stick appears where the finger lands and stays put there until the finger lifts.
  */
 export class Joystick {
   /** Drag direction on screen, length 0..1 (0 inside the dead zone). */
@@ -60,13 +59,9 @@ export class Joystick {
     const R = this.radius;
     let dx = p.x - this.bx, dy = p.y - this.by;
     const d = Math.hypot(dx, dy);
-    if (d > R) {
-      // Drag the base along behind the finger.
-      this.bx = p.x - (dx / d) * R;
-      this.by = p.y - (dy / d) * R;
-      dx = p.x - this.bx; dy = p.y - this.by;
-    }
-    this.kx = p.x; this.ky = p.y;
+    // The base stays where the thumb first landed; the knob stops at the rim.
+    if (d > R) { dx = (dx / d) * R; dy = (dy / d) * R; }
+    this.kx = this.bx + dx; this.ky = this.by + dy;
     const m = Math.min(1, Math.hypot(dx, dy) / R), dead = 0.12;
     if (m < dead) { this.vec.set(0, 0); return; }
     const s = (m - dead) / (1 - dead) / (m || 1);

@@ -7,7 +7,7 @@ A Katamari-style browser game about Pepper, a black-and-white border collie who 
 Once GitHub Pages is turned on (Settings → Pages → Source: **GitHub Actions**), every push to `main` publishes the game at
 `https://gnomiostasis.github.io/Fat-Pepper/`.
 
-**Controls:** arrow keys or WASD, or hold the mouse where Pepper should go. On phones and tablets, put a thumb down anywhere and drag: a thumbstick appears under it, and dragging further runs faster.
+**Controls:** arrow keys or WASD, or hold the mouse where Pepper should go. On phones and tablets, put a thumb down anywhere and drag: a thumbstick appears under it and stays there, and dragging further from it runs faster.
 
 ## How a run works
 
