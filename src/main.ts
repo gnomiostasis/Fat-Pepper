@@ -4,6 +4,8 @@ import { GameScene } from './scenes/GameScene';
 import { UIScene } from './scenes/UIScene';
 import { getWorld } from './world3d/World3D';
 
+document.getElementById('build')!.textContent = __BUILD_VERSION__;
+
 async function fontsReady() {
   // Phaser draws text to canvas, so the web fonts must be loaded first. Give up after 3s.
   const load = Promise.all(['400 20px "Lilita One"', '400 16px "Nunito"', '700 16px "Nunito"', '800 16px "Nunito"'].map((f) => document.fonts.load(f)));

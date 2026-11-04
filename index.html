@@ -15,11 +15,14 @@
         -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
       #world, #game { position: fixed; inset: 0; }
       canvas { display: block; }
+      #build { position: fixed; right: calc(8px + env(safe-area-inset-right)); bottom: calc(6px + env(safe-area-inset-bottom));
+        font: 10px/1 "Nunito", system-ui, sans-serif; color: #2b2118; opacity: 0.45; pointer-events: none; z-index: 10; }
     </style>
   </head>
   <body>
     <div id="world"></div>
     <div id="game"></div>
+    <div id="build"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
