@@ -391,6 +391,9 @@ export class GameScene extends Phaser.Scene {
     this.x += this.vx * dt;
     this.y += this.vy * dt;
 
+    // Bite first, then bump: anything she has just walked into and is big enough for gets eaten
+    // before it can push her back, so she ploughs straight through houses, fences and furniture.
+    this.eatNearby();
     this.collide(time);
     const b = this.house.bounds;
     this.x = Phaser.Math.Clamp(this.x, b.x + this.r, b.x + b.w - this.r);
