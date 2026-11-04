@@ -8,6 +8,10 @@ export const EAT_RATIO = 1.25;
 export const GROW_K = 0.2;
 /** Radius Pepper needs to jump out of the dog door. */
 export const DOOR_R = 28;
+/** Radius where Pepper is too big for the house's doorways, so she starts chomping through the inside walls instead. */
+export const WALL_R = 20;
+/** Indoors, Pepper hops over furniture she can't eat yet once its short side is no wider than she is. */
+export const canHop = (r: number, shortSide: number) => shortSide <= r * 2;
 
 export const canEat = (r: number, size: number) => size <= r * EAT_RATIO;
 

@@ -55,7 +55,7 @@ export class World3D {
   private flap = new THREE.Group();
   /** One group per building in the level, in the level's order. */
   private buildings: THREE.Group[] = [];
-  /** Outdoors, one group per fence in the level's walls, in order. Empty indoors. */
+  /** Walls Pepper can eat, one group each, indexed like [...level.walls, ...level.counters]; a gap for one that stays put. */
   private walls: THREE.Group[] = [];
   private flapAngle = 0;
   /** Floor arrows near Pepper: one to the dog door, one warning where the dog catcher is. */
@@ -169,42 +169,43 @@ export class World3D {
     // Walls (or fences), kitchen counter, front door, stairs
     const WALL_H = house.wallStyle.height;
     const walls = new ModelBuilder();
-    const slab = (sg: Seg, t: number, y0: number, h: number, color: string, extend = true) => {
+    const slab = (mb: ModelBuilder, sg: Seg, t: number, y0: number, h: number, color: string, extend = true, ox = 0, oz = 0) => {
       const [ax, ay] = sg.a, [bx, by] = sg.b, len = Math.hypot(bx - ax, by - ay);
-      walls.add(new THREE.BoxGeometry(len + (extend ? t : 0), h, t), color, (ax + bx) / 2, y0 + h / 2, (ay + by) / 2,
+      mb.add(new THREE.BoxGeometry(len + (extend ? t : 0), h, t), color, (ax + bx) / 2 - ox, y0 + h / 2, (ay + by) / 2 - oz,
         { ry: -Math.atan2(by - ay, bx - ax) });
     };
-    // Outdoors each fence is its own mesh, centred on itself, so a huge Pepper can eat them one by one.
+    // Anything Pepper can eat a piece at a time (every fence outdoors, the inside walls and kitchen counter
+    // indoors) gets its own mesh, centred on itself, so it can be gulped on its own.
     this.walls = [];
-    if (house.buildings.length) {
-      for (const sg of house.walls) {
-        const [ax, ay] = sg.a, [bx, by] = sg.b, len = Math.hypot(bx - ax, by - ay);
-        const fb = new ModelBuilder().add(new THREE.BoxGeometry(len + sg.t, WALL_H, sg.t), house.wallStyle.color, 0, WALL_H / 2, 0,
-          { ry: -Math.atan2(by - ay, bx - ax) });
-        const g = new THREE.Group();
-        g.add(inkedMesh(fb.build()));
-        g.position.set((ax + bx) / 2, 0, (ay + by) / 2);
-        this.root.add(g);
-        this.walls.push(g);
-      }
-    } else {
-      for (const sg of house.walls) slab(sg, sg.t, 0, WALL_H, house.wallStyle.color);
-    }
+    const own = (i: number, sg: Seg, draw: (mb: ModelBuilder, ox: number, oz: number) => void) => {
+      const cx = (sg.a[0] + sg.b[0]) / 2, cz = (sg.a[1] + sg.b[1]) / 2, mb = new ModelBuilder();
+      draw(mb, cx, cz);
+      const g = new THREE.Group();
+      g.add(inkedMesh(mb.build()));
+      g.position.set(cx, 0, cz);
+      this.root.add(g);
+      this.walls[i] = g;
+    };
+    const outdoors = house.buildings.length > 0;
+    house.walls.forEach((sg, i) => {
+      if (outdoors || sg.inner) own(i, sg, (mb, ox, oz) => slab(mb, sg, sg.t, 0, WALL_H, house.wallStyle.color, true, ox, oz));
+      else slab(walls, sg, sg.t, 0, WALL_H, house.wallStyle.color);
+    });
     // The counter bends, so its pieces meet at round posts instead of overlapping
     if (house.counters.length) {
       const ct = house.counters[0].t;
-      for (const sg of house.counters) {
-        slab(sg, ct - 6, 0, COUNTER_H - 3, PAL.tealLight, false);
-        slab(sg, ct, COUNTER_H - 3, 3, PAL.white, false);
-      }
-      for (const [x, y] of [house.counters[0].a, ...house.counters.map((sg) => sg.b)]) {
-        walls.cyl(x, y, (ct - 6) / 2, 0, COUNTER_H - 3, PAL.tealLight, { ink: false });
-        walls.cyl(x, y, ct / 2, COUNTER_H - 3, 3, PAL.white, { ink: false });
-      }
+      house.counters.forEach((sg, k) => own(house.walls.length + k, sg, (mb, ox, oz) => {
+        slab(mb, sg, ct - 6, 0, COUNTER_H - 3, PAL.tealLight, false, ox, oz);
+        slab(mb, sg, ct, COUNTER_H - 3, 3, PAL.white, false, ox, oz);
+        for (const [x, y] of k === 0 ? [sg.a, sg.b] : [sg.b]) {
+          mb.cyl(x - ox, y - oz, (ct - 6) / 2, 0, COUNTER_H - 3, PAL.tealLight, { ink: false });
+          mb.cyl(x - ox, y - oz, ct / 2, COUNTER_H - 3, 3, PAL.white, { ink: false });
+        }
+      }));
     }
     const fd = house.frontDoor;
     if (fd) {
-      slab(fd, fd.t - 4, 0, WALL_H - 2, PAL.wood, false);
+      slab(walls, fd, fd.t - 4, 0, WALL_H - 2, PAL.wood, false);
       walls.ball(fd.a[0] + (fd.b[0] - fd.a[0]) * 0.8, WALL_H * 0.45, fd.a[1] + fd.t / 2, 2.6, PAL.mustard);
     }
     const st = house.stairs;
@@ -216,7 +217,7 @@ export class World3D {
     }
     // Paint on the ground
     for (const m of house.marks) walls.box(m.box.x + m.box.w / 2, m.box.y + m.box.h / 2, m.box.w, m.box.h, 0, 0.6, m.color, { ink: false });
-    if ((house.walls.length && !this.walls.length) || house.counters.length || fd || st || house.marks.length) this.root.add(inkedMesh(walls.build()));
+    if (house.walls.some((sg) => !outdoors && !sg.inner) || fd || st || house.marks.length) this.root.add(inkedMesh(walls.build()));
 
     // Buildings: solid walls with a roof slab on top. Each is its own mesh, centred on
     // its footprint, so Pepper can eat them one at a time once she's big enough.
@@ -344,7 +345,7 @@ export class World3D {
     this.slurp(this.buildings[i], mouthX, mouthY, mouthH);
   }
 
-  /** Pepper ate a stretch of fence (outdoors only). */
+  /** Pepper ate a stretch of fence, an inside wall or a piece of kitchen counter. */
   eatWall(i: number, mouthX: number, mouthY: number, mouthH: number) {
     this.slurp(this.walls[i], mouthX, mouthY, mouthH);
   }

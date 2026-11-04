@@ -11,8 +11,8 @@ import {
   Stacks, TONGUE, ZOOMIES, rollChoices,
 } from '../game/powerups';
 import {
-  CATCHER_R, CATCHER_RAD, CATCHER_SIZE, CATCHER_SPEED, DOOR_R, EAT_RATIO, GROW_K, HOUSE_BITE, START_R, WIN_R,
-  fatFor, formatSize, grownRadius, OUTDOOR_ZOOM, speedFor, viewFor,
+  CATCHER_R, CATCHER_RAD, CATCHER_SIZE, CATCHER_SPEED, DOOR_R, EAT_RATIO, GROW_K, HOUSE_BITE, START_R, WALL_R, WIN_R,
+  canHop, fatFor, formatSize, grownRadius, OUTDOOR_ZOOM, speedFor, viewFor,
 } from '../game/tuning';
 import { ITEMS } from '../art/items';
 import { Placed, World3D, getWorld } from '../world3d/World3D';
@@ -75,7 +75,11 @@ export class GameScene extends Phaser.Scene {
   /** Pepper ate the dog catcher, so he's gone for good. */
   private catcherEaten = false;
   private houses: House[] = [];
-  /** Outdoors: the yard fences, by index into the level's walls. Pepper can eat them once she can eat a house. */
+  /**
+   * Walls Pepper can eat a piece at a time, by index into [...level.walls, ...level.counters]. Outdoors that's
+   * every yard fence, once she can eat a house. Indoors it's the inside walls and the kitchen counter, once
+   * she's too big for the doorways, so she can never get boxed into a room.
+   */
   private fences: { i: number; seg: Seg; eaten: boolean }[] = [];
   /** How big a fence counts as: the same as the smallest house, so everything opens up at once. */
   private fenceBite = Infinity;
@@ -189,7 +193,10 @@ export class GameScene extends Phaser.Scene {
       return { i, box, poly: b.poly, edges, bite: Math.max(box.w, box.h) * HOUSE_BITE, eaten: false };
     });
     const edges = this.houses.flatMap((h) => h.edges);
-    this.fences = level.buildings.length ? level.walls.map((seg, i) => ({ i, seg, eaten: false })) : [];
+    this.fences = level.buildings.length
+      ? level.walls.map((seg, i) => ({ i, seg, eaten: false }))
+      : [...level.walls, ...level.counters].map((seg, i) => ({ i, seg, eaten: false }))
+        .filter((f) => f.seg.inner || f.i >= level.walls.length);
     this.fenceBite = this.houses.length ? Math.min(...this.houses.map((h) => h.bite)) : Infinity;
     this.segs = [...level.walls, ...level.counters, ...edges, ...(level.frontDoor ? [level.frontDoor] : [])];
     if (level.stairs) this.solids.push(level.stairs);
@@ -372,6 +379,7 @@ export class GameScene extends Phaser.Scene {
   private collide(time: number) {
     const r = this.r;
     for (const b of this.solids) {
+      if (b !== this.doorFlap && !this.outside && canHop(r, Math.min(b.w, b.h))) continue;
       const nx = Phaser.Math.Clamp(this.x, b.x, b.x + b.w), ny = Phaser.Math.Clamp(this.y, b.y, b.y + b.h);
       let ox = this.x - nx, oy = this.y - ny;
       const d = Math.hypot(ox, oy);
@@ -436,8 +444,9 @@ export class GameScene extends Phaser.Scene {
     for (const h of this.houses) {
       if (!h.eaten && this.canEat(h.bite) && circleBoxDist(this.x, this.y, h.box) < this.r + 8) this.eatHouse(h);
     }
-    // At house size the fences go too, so nothing on the map is left standing.
-    if (this.fences.length && this.canEat(this.fenceBite)) {
+    // At house size the fences go too, so nothing on the map is left standing. Indoors, once Pepper
+    // is too big for the doorways, she chomps through the inside walls instead.
+    if (this.fences.length && (this.outside ? this.canEat(this.fenceBite) : this.r >= WALL_R)) {
       for (const f of this.fences) {
         if (!f.eaten && segHit(this.x, this.y, f.seg).d < this.r + f.seg.t / 2 + 8) this.eatFence(f);
       }
@@ -597,20 +606,21 @@ export class GameScene extends Phaser.Scene {
     this.afterGrow(before);
   }
 
-  /** A whole stretch of yard fence, gulped like a breadstick. */
+  /** A whole stretch of yard fence (or inside wall), gulped like a breadstick. */
   private eatFence(f: GameScene['fences'][number]) {
     f.eaten = true;
     this.segs = this.segs.filter((sg) => sg !== f.seg);
     const before = this.r;
     const len = Math.hypot(f.seg.b[0] - f.seg.a[0], f.seg.b[1] - f.seg.a[1]);
-    // Fences are thin, so they count as a strip about a metre wide.
-    this.grow(GROW_K * (len * 100) / 4);
+    // Fences are thin, so they count as a strip about a metre wide. Inside walls just count their footprint.
+    this.grow(GROW_K * (len * (this.outside ? 100 : f.seg.t)) / 4);
 
     const mouthX = this.x + Math.cos(this.heading) * this.r * 1.6, mouthY = this.y + Math.sin(this.heading) * this.r * 1.6;
     this.world.eatWall(f.i, mouthX, mouthY, this.r * 1.2);
     const [sx, sy] = this.world.toScreen(mouthX, mouthY, this.r * 1.2), ppc = this.world.pxPerCm();
     this.crumbBurst(sx, sy, before * ppc);
-    this.game.events.emit(EV.eat, 'a fence');
+    const what = this.outside ? 'a fence' : f.i >= this.house.walls.length ? 'the kitchen counter' : 'a wall';
+    this.game.events.emit(EV.eat, what);
     this.afterGrow(before);
   }
 
@@ -619,6 +629,8 @@ export class GameScene extends Phaser.Scene {
     this.game.events.emit(EV.size, this.r);
     if (before < DOOR_R && this.r >= DOOR_R) {
       this.game.events.emit(EV.toast, 'Big enough! Head for the dog door in the garage.');
+    } else if (!this.outside && before < WALL_R && this.r >= WALL_R) {
+      this.game.events.emit(EV.toast, 'Too chunky for the doorways! Pepper can chomp right through the walls now.');
     }
     if (this.outside && this.catcherEaten) {
       const houseR = this.houseEatR();
@@ -800,6 +812,7 @@ export class GameScene extends Phaser.Scene {
   /** Slides a walker (the dog catcher) out of walls, fences, buildings and furniture. */
   private pushOut(e: { x: number; y: number; vx: number; vy: number }, r: number) {
     for (const b of this.solids) {
+      if (b !== this.doorFlap && !this.outside && canHop(r, Math.min(b.w, b.h))) continue;
       const nx = Phaser.Math.Clamp(e.x, b.x, b.x + b.w), ny = Phaser.Math.Clamp(e.y, b.y, b.y + b.h);
       const d = Math.hypot(e.x - nx, e.y - ny);
       if (d >= r || d < 0.0001) continue;

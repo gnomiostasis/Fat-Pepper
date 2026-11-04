@@ -5,7 +5,11 @@ export interface Box { x: number; y: number; w: number; h: number }
 export type Pt = [number, number];
 
 /** A straight wall (or counter, or fence) of thickness `t`, from `a` to `b`. */
-export interface Seg { a: Pt; b: Pt; t: number }
+export interface Seg {
+  a: Pt; b: Pt; t: number;
+  /** An inside wall of Pepper's house, which she can chomp through once she's too big for the doorways. */
+  inner?: boolean;
+}
 
 export interface FurnitureSpot { id: string; x: number; y: number; rot: 0 | 90 | 180 | 270 }
 
