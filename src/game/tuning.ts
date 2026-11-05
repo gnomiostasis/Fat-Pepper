@@ -20,9 +20,6 @@ export const grownRadius = (r: number, size: number) => Math.sqrt(r * r + GROW_K
 /** Top speed in cm/s; grows with Pepper so she feels about as quick on screen at every size. */
 export const speedFor = (r: number) => 95 * Math.pow(r / START_R, 0.85);
 
-/** 0 = skinny puppy, approaching 1 as she gets enormous. Rises quickly early so the chub shows. */
-export const fatFor = (r: number) => Math.min(1, Math.max(0, 1 - Math.exp(-Math.log(r / START_R) * 0.55)));
-
 /** How many cm of house the camera shows across the screen's short side, so Pepper stays about the same size on screen. */
 export const viewFor = (r: number) => 105 * Math.pow(r / START_R, 0.85);
 
@@ -62,3 +59,22 @@ export const STREET_R = 1100;
 export const ISLAND_R = 40000;
 /** Pepper's size when she has eaten enough of the island to win the run (6.4 km across). */
 export const WIN_R = 320000;
+
+/**
+ * How round Pepper is at each stage of the run, as [radius, fat] pairs: a little chubby leaving the house, plump
+ * by the time the catcher gives up, properly round reaching the island, and only a full ball at the very end.
+ */
+const FAT_STEPS: [number, number][] = [[START_R, 0], [DOOR_R, 0.2], [TOWN_R, 0.45], [ISLAND_R, 0.8], [WIN_R, 1]];
+
+/** 0 = skinny puppy, 1 = a ball. Eases up through each stage of the run (in log size) so she never maxes out early. */
+export function fatFor(r: number) {
+  if (r <= START_R) return 0;
+  for (let i = 1; i < FAT_STEPS.length; i++) {
+    const [r1, f1] = FAT_STEPS[i];
+    if (r < r1) {
+      const [r0, f0] = FAT_STEPS[i - 1];
+      return f0 + (f1 - f0) * (Math.log(r / r0) / Math.log(r1 / r0));
+    }
+  }
+  return 1;
+}
