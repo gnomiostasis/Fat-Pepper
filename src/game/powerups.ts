@@ -2,7 +2,7 @@
 
 export type PowerId =
   | 'zoomies' | 'magnet' | 'jaws' | 'appetite' | 'tongue'
-  | 'streak' | 'rush' | 'fur' | 'sneaky' | 'treats';
+  | 'streak' | 'rush' | 'treats';
 
 export interface PowerDef {
   id: PowerId;
@@ -32,10 +32,6 @@ export const POWERS: PowerDef[] = [
     blurb: () => 'Quick bites in a row build a streak. Each bite in a streak grows Pepper a bit more.' },
   { id: 'rush', name: 'Sugar Rush', icon: '🍬', color: '#b9a3dc', max: 3, weight: 7,
     blurb: () => 'Every bite gives Pepper a burst of speed for a second.' },
-  { id: 'fur', name: 'Slippery Fur', icon: '🛡️', color: '#9ccdc4', max: 3, weight: 6,
-    blurb: (n) => `The dog catcher's net slips right off. Saves Pepper ${n === 1 ? 'once' : `${n} times`}.` },
-  { id: 'sneaky', name: 'Sneaky Paws', icon: '🐾', color: '#a8d08d', max: 3, weight: 6,
-    blurb: () => `The dog catcher is ${Math.round(SNEAKY * 100)}% slower to chase Pepper.` },
   { id: 'treats', name: 'Treat Rain', icon: '🦴', color: '#e9c27c', max: 99, weight: 5,
     blurb: () => 'A shower of snacks lands all around Pepper, right now.' },
 ];
@@ -59,8 +55,6 @@ export const STREAK_GAP = 1.2;
 /** Speed bonus per Sugar Rush, fading over RUSH_TIME seconds after a bite. */
 export const RUSH = 0.3;
 export const RUSH_TIME = 1;
-/** Catcher speed cut per Sneaky Paws. */
-export const SNEAKY = 0.1;
 
 /**
  * Pepper's radius at each powerup pick after the free one at the start: every ~3.5x of growth,

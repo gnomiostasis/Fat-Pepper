@@ -27,8 +27,6 @@ export interface PowerState {
   stacks: Stacks;
   /** Radius of the next pick, or null once they're all taken. */
   next: number | null;
-  /** Slippery Fur saves left. */
-  fur: number;
 }
 
 export interface RunStats {

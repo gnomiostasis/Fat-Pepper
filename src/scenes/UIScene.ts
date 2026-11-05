@@ -25,7 +25,7 @@ export class UIScene extends Phaser.Scene {
   private feed: FeedLine[] = [];
   private r = START_R;
   private goal: Goal = { from: START_R, to: DOOR_R, label: 'Dog door at', reached: 'Dog door: OPEN!' };
-  private powers: PowerState = { stacks: {}, next: MILESTONES[0], fur: 0 };
+  private powers: PowerState = { stacks: {}, next: MILESTONES[0] };
   private nextLabel!: Phaser.GameObjects.Text;
   private chips!: Phaser.GameObjects.Container;
   private picker?: Phaser.GameObjects.Container;
@@ -38,7 +38,7 @@ export class UIScene extends Phaser.Scene {
     this.feed = [];
     this.r = START_R;
     this.goal = { from: START_R, to: DOOR_R, label: 'Dog door at', reached: 'Dog door: OPEN!' };
-    this.powers = { stacks: {}, next: MILESTONES[0], fur: 0 };
+    this.powers = { stacks: {}, next: MILESTONES[0] };
     this.picker = undefined;
 
     this.panel = this.add.graphics();
@@ -118,8 +118,7 @@ export class UIScene extends Phaser.Scene {
     let x = x0, y = y0;
     for (const [id, n] of Object.entries(stacks) as [PowerId, number][]) {
       const def = POWER_BY_ID[id];
-      let label = n > 1 ? `${def.icon} ${def.name} ×${n}` : `${def.icon} ${def.name}`;
-      if (id === 'fur') label = `${def.icon} ${def.name} (${this.powers.fur} left)`;
+      const label = n > 1 ? `${def.icon} ${def.name} ×${n}` : `${def.icon} ${def.name}`;
       if (id === 'treats') continue;
       const t = this.add.text(10, 4, label, { fontFamily: BODY, fontSize: '13px', fontStyle: '800', color: PAL.ink });
       const w = t.width + 20, h = 26;
