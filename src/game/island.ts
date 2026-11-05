@@ -191,7 +191,8 @@ export function buildIsland(country: { w: number; h: number; west: Pt; east: Pt;
   // never sees the end of the world.
   // Bands that get wider further out, so no piece is so long and thin that the depth buffer loses track of it.
   const out = (p: Pt, k: number): Pt => [cx + (p[0] - cx) * k, cy + (p[1] - cy) * k];
-  const bands = [1, 1.04, 1.1, 1.2, 1.35, 1.6, 2, 2.6, 3.5, 5];
+  // Out past the island too, across the whole ocean round it.
+  const bands = [1, 1.04, 1.1, 1.2, 1.35, 1.6, 2, 2.6, 3.5, 5, 7, 10, 14, 20, 28, 40];
   const sea = coast.flatMap((p, i) => {
     const q = coast[(i + 1) % N];
     return bands.slice(1).map((k, j): Pt[] => [out(p, bands[j]), out(q, bands[j]), out(q, k), out(p, k)]);

@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { PAL, hexNum } from '../art/palette';
 import { MILESTONES, POWER_BY_ID, PowerDef, PowerId, Stacks } from '../game/powerups';
-import { DOOR_R, START_R, formatSize } from '../game/tuning';
+import { DOOR_R, START_R, formatSize, spaceFor } from '../game/tuning';
 import { EV, Goal, PowerState, RunStats } from './events';
 import { touchDevice } from './joystick';
 
@@ -13,6 +13,8 @@ interface FeedLine { name: string; count: number; text: Phaser.GameObjects.Text;
 /** HUD and the start and finish cards, drawn on top of the game. */
 export class UIScene extends Phaser.Scene {
   private vignette!: Phaser.GameObjects.Image;
+  /** Night and stars round the edges, as Pepper's head rises into space. Under the HUD. */
+  private space!: Phaser.GameObjects.Image;
   private panel!: Phaser.GameObjects.Graphics;
   private sizeLabel!: Phaser.GameObjects.Text;
   private sizeText!: Phaser.GameObjects.Text;
@@ -51,9 +53,10 @@ export class UIScene extends Phaser.Scene {
     this.toastBox = this.add.container(0, 0).setAlpha(0);
 
     this.vignette = this.add.image(0, 0, 'vignette').setOrigin(0);
+    this.space = this.add.image(0, 0, 'space').setOrigin(0).setDepth(-1).setAlpha(0);
 
     const bus = this.game.events;
-    const onSize = (r: number) => { this.r = r; this.drawHud(); };
+    const onSize = (r: number) => { this.r = r; this.space.setAlpha(spaceFor(r)); this.drawHud(); };
     const onEat = (name: string) => this.addFeed(name);
     const onToast = (msg: string) => this.toast(msg);
     const onDone = (s: RunStats) => this.showFinish(s);
@@ -77,6 +80,7 @@ export class UIScene extends Phaser.Scene {
   private layout() {
     const { width: w, height: h } = this.scale;
     this.vignette.setDisplaySize(w, h);
+    this.space.setDisplaySize(w, h);
     this.drawHud();
     this.feed.forEach((f, i) => f.text.setPosition(20, h - 40 - i * 24));
     this.toastBox.setPosition(w / 2, 96);
@@ -285,7 +289,7 @@ export class UIScene extends Phaser.Scene {
   private showStart() {
     this.showCard(
       'Fat Pepper',
-      'Pepper is a tiny puppy with a big appetite. Eat anything smaller than you, grow big enough to jump out the dog door, then keep going: the neighborhood, the town, the countryside and the island beyond are all out there, one big world to eat. Every few sizes you pick a powerup, and they stack. Watch out for the dog catcher!',
+      'Pepper is a tiny puppy with a big appetite. Eat anything smaller than you, grow big enough to jump out the dog door, then keep going: the neighborhood, the town, the countryside, the island and the ocean are all out there, one big world to eat, all the way up to space. Every few sizes you pick a powerup, and they stack. Watch out for the dog catcher!',
       touchDevice()
         ? 'Put your thumb down anywhere and drag to steer Pepper. Drag further to run faster. Keyboards: arrow keys or WASD.'
         : 'Move with the arrow keys or WASD, or hold the mouse where Pepper should go.',
@@ -301,10 +305,11 @@ export class UIScene extends Phaser.Scene {
     const hoods = `${s.hoods} whole neighborhood${s.hoods === 1 ? '' : 's'}`;
     const towns = `${s.towns} whole town${s.towns === 1 ? '' : 's'}`;
     const cities = `${s.cities} whole cit${s.cities === 1 ? 'y' : 'ies'}`;
+    const isles = `${s.islands} whole island${s.islands === 1 ? '' : 's'}`;
     this.showCard(
-      won ? 'Pepper ate it all!' : 'Gotcha!',
+      won ? 'Pepper reached space!' : 'Gotcha!',
       won
-        ? `${formatSize(s.r)} of very good dog. She ate ${s.eaten} things in ${m}:${sec}, including ${houses}, ${hoods}, ${towns} and ${cities}.`
+        ? `${formatSize(s.r)} of very good dog. She ate ${s.eaten} things in ${m}:${sec}, including ${houses}, ${hoods}, ${towns}, ${cities} and ${isles}.`
         : `The dog catcher netted Pepper at ${formatSize(s.r)}, after she ate ${s.eaten} things in ${m}:${sec}. Off to the pound!`,
       this.buildLine(s.stacks) || (won ? 'Not a crumb left.' : 'Keep moving and keep eating: he speeds up as you grow.'),
       won ? 'Play again' : 'Try again',
