@@ -14,8 +14,8 @@ Once GitHub Pages is turned on (Settings → Pages → Source: **GitHub Actions*
 The whole run is one world, with no loading in between: Pepper's house sits on its lot in the neighborhood, the neighborhood sits on the west edge of a market town (its main road carries on as the town's high street), the town sits in the middle of 8 km of countryside, on the motorway, the countryside sits in the middle of an island 64 km across, and the island sits in 480 km of open ocean. It's all there from the start, laid out fresh each run, and the camera just keeps pulling back as Pepper grows.
 
 1. **Indoors.** Pepper starts as a 12 cm puppy in her bed in the living room of her real house (traced from a floor plan of it). She can eat anything up to about her own size, and every bite makes her bigger and rounder. Grow to 56 cm, then head through the pantry into the garage and jump out the dog door. The flap swings shut behind her.
-2. **The neighborhood.** A main road winds across it, a crescent loops round a little park with a pond, and side streets curve off to cul-de-sacs. Every house faces its street, with a front yard, a driveway and a fenced backyard that opens onto the green behind, and footpaths between the houses every few lots, so there's always a way round. Pepper's own house is one of them, roof off. At 80 cm the dog catcher spots Pepper and gives chase with his net. Keep eating and keep moving; if he catches her, it is off to the pound.
-3. **Turning the tables.** At 2.88 m Pepper is bigger than the dog catcher. He runs, and she can eat him. If she gets to 14 m without catching him, he gives up.
+2. **The neighborhood.** A main road winds across it, a crescent loops round a little park with a pond, and side streets curve off to cul-de-sacs. Every house faces its street, with a front yard, a driveway and a fenced backyard that opens onto the green behind, and footpaths between the houses every few lots, so there's always a way round. Pepper's own house is one of them, roof off. At 80 cm the dog catcher spots Pepper and gives chase with his net, which grows with her so it can always bag her. Keep eating and keep moving; if he catches her, it is off to the pound.
+3. **Turning the tables.** At 5 m Pepper can finally eat the dog catcher. He freezes and cowers where he stands, so she can go get him. If she gets to 14 m without catching him, he gives up.
 4. **Eating the neighborhood.** Pepper keeps growing on cars and trees. At about 7.2 m she can eat the smallest houses (smaller houses go first; Big Jaws helps), and every house is a huge bite. From then on yard fences are food too, and so are the walls of her own house.
 5. **The town.** Nothing stops Pepper wandering into town whenever she likes. It's a winding English market town: a high street curving through the market square and town hall, a ring road, side streets and lanes ending in cul-de-sacs, shops, cafés, offices and churches in the middle and houses further out. A river runs through it (small Pepper has to paddle, except on the bridges), there's a railway with its station and trains, a park with a pond, a fairground with a Ferris wheel and circus tent, and woods. Out on the edge of town are more neighborhoods, each a hedged patch of little houses. Once she's 22 m across she's too wide for the streets and steps over anything she can't eat yet, anywhere in the world, so nothing can box her in. At about 90 m she can eat a neighborhood in one gulp.
 6. **The countryside.** All around the town: patchwork fields, rivers and lakes, the motorway and country lanes, with barns, silos, windmills and wind turbines to snack on, then farms, forests and castles. Villages and whole towns are dotted about. At about 416 m she can gulp down a whole town. By 800 m she has outgrown the countryside.
@@ -28,13 +28,11 @@ The whole run is one world, with no loading in between: Pepper's house sits on i
 | --- | --- |
 | 💨 Zoomies | 15% faster |
 | 🧲 Snack Magnet | Nearby snacks slide toward Pepper; bigger range each pick |
-| 🦷 Big Jaws | Eat things about 11% bigger, which also means eating the dog catcher sooner |
+| 🦷 Big Jaws | Eat things about 11% bigger |
 | 🍖 Bottomless Belly | 15% more growth from every bite |
 | 👅 Long Tongue | Slurp up loose food from further away |
 | 🔥 Munch Streak | Quick bites in a row build a streak worth up to 40% extra growth |
 | 🍬 Sugar Rush | A one-second speed burst after every bite |
-| 🛡️ Slippery Fur | The dog catcher's net slips off once (stacks into extra saves) |
-| 🐾 Sneaky Paws | The dog catcher chases 10% slower |
 | 🦴 Treat Rain | Snacks sized for Pepper rain down around her right away |
 
 The real neighborhood map, sound and a title screen are on the way.

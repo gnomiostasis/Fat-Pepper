@@ -15,6 +15,24 @@ export interface CatcherPose {
   swing: number;
   /** Shrinks him away when Pepper eats him. */
   scale: number;
+  /** How much bigger than normal his net is (it grows with Pepper). */
+  net: number;
+  /** 0 standing, 1 crouched and trembling behind his net once Pepper can eat him. */
+  cower: number;
+  /** Seconds, for his trembling. */
+  t: number;
+}
+
+/** How far the net's hoop sits out along his arm, and its radius, at net scale 1 (cm). */
+const POLE = 98;
+const HOOP = 20;
+
+/** The pole only grows with the square root of the hoop, so a giant net doesn't stick out for miles. */
+export const poleScale = (net: number) => Math.sqrt(net);
+
+/** How far in front of him the net's hoop reaches, and how big it is, at a given net scale (cm). */
+export function netReach(net: number) {
+  return { reach: 35 + POLE * poleScale(net), hoop: HOOP * net };
 }
 
 /**
@@ -26,6 +44,8 @@ export class Catcher3D {
   private body = new THREE.Group();
   private legs: THREE.Group[] = [];
   private arm = new THREE.Group();
+  private pole = new THREE.Group();
+  private hoop = new THREE.Group();
   private silMat = new THREE.MeshBasicMaterial({
     color: PAL.ink, opacity: 0.35, transparent: false, depthWrite: false, depthFunc: THREE.GreaterDepth,
     blending: THREE.CustomBlending, blendSrc: THREE.SrcAlphaFactor, blendDst: THREE.OneMinusSrcAlphaFactor,
@@ -55,11 +75,15 @@ export class Catcher3D {
       .box(-23, 25, 12, 12, 116, 36, PAL.white));
     // His net arm, swinging the net out in front of him
     this.arm.position.set(0, 140, 25);
-    this.part(this.arm, (b) => b
-      .box(14, 3, 30, 10, -6, 12, PAL.white)
-      .rod(55, 0, 5, 2, 90, 'x', PAL.woodLight)
-      .ring(108, 0, 5, 20, 1.8, PAL.greyLight)
-      .cyl(108, 5, 18, -14, 14, PAL.white, { ink: false, r2: 6 }));
+    this.part(this.arm, (b) => b.box(14, 3, 30, 10, -6, 12, PAL.white));
+    // The net itself, in two pieces so it can grow with Pepper: the pole, and the hoop and bag on the end of it.
+    this.pole.position.set(10, 0, 5);
+    this.hoop.position.set(10 + POLE, 0, 5);
+    this.part(this.pole, (b) => b.rod(POLE / 2 - 4, 0, 0, 2, POLE - 8, 'x', PAL.woodLight));
+    this.part(this.hoop, (b) => b
+      .ring(0, 0, 0, HOOP, 1.8, PAL.greyLight)
+      .cyl(0, 0, HOOP - 2, -14, 14, PAL.white, { ink: false, r2: 6 }));
+    this.arm.add(this.pole, this.hoop);
     this.body.add(this.arm);
   }
 
@@ -83,11 +107,20 @@ export class Catcher3D {
     this.root.position.set(p.x, 0, p.y);
     this.root.rotation.y = -p.heading;
     this.root.scale.setScalar(Math.max(0.001, p.scale));
-    this.legs[0].rotation.z = Math.sin(p.gait) * 0.5;
-    this.legs[1].rotation.z = -Math.sin(p.gait) * 0.5;
-    this.body.position.y = Math.abs(Math.cos(p.gait)) * 3;
-    // Net held up and forward, swung down toward the ground on a lunge
-    this.arm.rotation.z = 0.5 - p.swing * 1.0;
-    this.arm.rotation.y = -0.35 + p.swing * 0.35;
+    const k = p.cower, walk = 1 - k;
+    // Cowering: knees bent, leaning back away from Pepper, shaking like a leaf.
+    this.legs[0].rotation.z = Math.sin(p.gait) * 0.5 * walk + 0.55 * k;
+    this.legs[1].rotation.z = -Math.sin(p.gait) * 0.5 * walk - 0.35 * k;
+    this.body.position.y = Math.abs(Math.cos(p.gait)) * 3 * walk - 12 * k;
+    this.body.position.x = Math.sin(p.t * 55) * 1.6 * k;
+    this.body.rotation.z = 0.28 * k;
+    // Net held up and forward, swung down toward the ground on a lunge. Cowering, he lets it droop and shrink back to normal.
+    this.arm.rotation.z = (0.5 - p.swing * 1.0) * walk - 1.1 * k;
+    this.arm.rotation.y = (-0.35 + p.swing * 0.35) * walk + 0.6 * k;
+    const net = p.net + (1 - p.net) * k;
+    const ps = poleScale(net);
+    this.pole.scale.set(ps, Math.sqrt(ps), Math.sqrt(ps));
+    this.hoop.position.x = 10 + POLE * ps;
+    this.hoop.scale.setScalar(net);
   }
 }

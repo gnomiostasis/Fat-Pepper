@@ -37,10 +37,12 @@ export function formatSize(r: number) {
 
 /** Phase 2: Pepper's size when the dog catcher spots her and gives chase. */
 export const CATCHER_R = 40;
-/** The dog catcher's height, which is what Pepper has to outgrow to eat him. */
+/** The dog catcher's height, which is how much of a meal he makes. */
 export const CATCHER_SIZE = 180;
-/** Pepper's size when she can finally eat the dog catcher. */
-export const CATCHER_EAT_R = CATCHER_SIZE / EAT_RATIO;
+/** Pepper's size when she can finally eat the dog catcher: 5 m across. Until then his net keeps growing to fit her. */
+export const CATCHER_EAT_R = 250;
+/** How much bigger than normal the dog catcher's net is for a Pepper this size, so its hoop is always about as wide as she is. */
+export const catcherNet = (r: number) => Math.max(1, (r * 0.95) / 20);
 /** His walking speed in cm/s; he speeds up to keep pace as Pepper grows. */
 export const CATCHER_SPEED = 330;
 /** His collision radius in cm. */

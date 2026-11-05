@@ -23,7 +23,7 @@ export const POWERS: PowerDef[] = [
   { id: 'magnet', name: 'Snack Magnet', icon: '🧲', color: '#f2b3bf', max: 4, weight: 9,
     blurb: (n) => n === 1 ? 'Snacks nearby slide toward Pepper on their own.' : 'The magnet pulls from further away, and faster.' },
   { id: 'jaws', name: 'Big Jaws', icon: '🦷', color: '#fbf4e4', max: 3, weight: 7,
-    blurb: () => `Eat things ${Math.round((JAWS / 1.25) * 100)}% bigger than before. The dog catcher too, eventually!` },
+    blurb: () => `Eat things ${Math.round((JAWS / 1.25) * 100)}% bigger than before.` },
   { id: 'appetite', name: 'Bottomless Belly', icon: '🍖', color: '#ef9a7a', max: 5, weight: 9,
     blurb: () => `Every bite makes Pepper grow ${Math.round(APPETITE * 100)}% more.` },
   { id: 'tongue', name: 'Long Tongue', icon: '👅', color: '#f2b3bf', max: 3, weight: 8,
@@ -58,7 +58,7 @@ export const RUSH_TIME = 1;
 
 /**
  * Pepper's radius at each powerup pick after the free one at the start: every ~3.5x of growth,
- * plus two more in town and two in the countryside. The dog door is at 28, the catcher shows up at 40 and is eaten at 144, and town starts at 700.
+ * plus two more in town and two in the countryside. The dog door is at 28, the catcher shows up at 40 and is eaten at 250 (5 m), and town starts at 700.
  */
 export const MILESTONES = [24, 82, 1400, 3200, 14000, 30000, 70000, 150000, 600000, 1600000];
 

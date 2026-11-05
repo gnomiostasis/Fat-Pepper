@@ -11,11 +11,12 @@ import {
   Stacks, TONGUE, ZOOMIES, rollChoices,
 } from '../game/powerups';
 import {
-  CATCHER_R, CATCHER_RAD, CATCHER_SIZE, CATCHER_SPEED, DOOR_R, EAT_RATIO, GROW_K, HOUSE_BITE, ISLAND_R, OCEAN_R, SPACE_R, spaceFor, START_R, STREET_R, TOWN_R, WALL_R, WIN_R,
+  CATCHER_EAT_R, CATCHER_R, CATCHER_RAD, catcherNet, CATCHER_SIZE, CATCHER_SPEED, DOOR_R, EAT_RATIO, GROW_K, HOUSE_BITE, ISLAND_R, OCEAN_R, SPACE_R, spaceFor, START_R, STREET_R, TOWN_R, WALL_R, WIN_R,
   canHop, fatFor, formatSize, grownRadius, OUTDOOR_ZOOM, speedFor, viewFor,
 } from '../game/tuning';
 import { ITEMS } from '../art/items';
 import { Placed, World3D, getWorld } from '../world3d/World3D';
+import { netReach } from '../world3d/catcher3d';
 import { ENDING_CARD } from '../world3d/ending';
 import { EV, Goal, PowerState, RunStats } from './events';
 
@@ -70,8 +71,14 @@ interface Catcher {
   checkT: number;
   lastX: number;
   lastY: number;
-  /** Once Pepper is big enough, he runs away from her instead. */
-  fleeing: boolean;
+  /** Once Pepper is big enough to eat him, he gives up the chase and cowers where he stands. */
+  cowering: boolean;
+  /** 0..1, how far into his cower he is. */
+  cower: number;
+  /** Seconds he's been out, for his trembling. */
+  t: number;
+  /** How big his net is right now; it grows (never shrinks) to fit Pepper. */
+  net: number;
   /** Seconds since Pepper ate him, or -1. */
   eatenT: number;
   /** Seconds he stands dazed after his net slips off Slippery Fur. */
@@ -671,9 +678,9 @@ export class GameScene extends Phaser.Scene {
     return size <= this.r * (EAT_RATIO + JAWS * this.n('jaws'));
   }
 
-  /** Pepper's size when she can eat the dog catcher, with Big Jaws counted. */
+  /** Pepper's size when she can eat the dog catcher: always 5 m, since his net keeps growing to fit her until then. */
   private catcherEatR() {
-    return CATCHER_SIZE / (EAT_RATIO + JAWS * this.n('jaws'));
+    return CATCHER_EAT_R;
   }
 
   /** Pepper's size when she can eat the smallest house still standing, with Big Jaws counted. */
@@ -1061,7 +1068,7 @@ export class GameScene extends Phaser.Scene {
     const [x, y] = [...spots].sort((a, b) => far(a) - far(b))[0];
     this.catcher = {
       x, y, vx: 0, vy: 0, heading: Math.atan2(this.y - y, this.x - x), gait: 0, lunge: 0, cool: 2, swing: 0,
-      detour: 0, detourAng: 0, checkT: 0, lastX: x, lastY: y, fleeing: false, eatenT: -1, stun: 0,
+      detour: 0, detourAng: 0, checkT: 0, lastX: x, lastY: y, cowering: false, cower: 0, t: 0, net: catcherNet(this.r), eatenT: -1, stun: 0,
     };
     this.world.catcher.show(true);
     this.emitGoal();
@@ -1080,21 +1087,26 @@ export class GameScene extends Phaser.Scene {
       this.emitGoal();
       return;
     }
-    const big = this.canEat(CATCHER_SIZE);
-    if (big && !c.fleeing) {
-      c.fleeing = true;
-      this.game.events.emit(EV.toast, 'Pepper is bigger than the dog catcher now. Eat him!');
+    const big = this.r >= CATCHER_EAT_R;
+    if (big && !c.cowering) {
+      c.cowering = true; c.lunge = 0;
+      this.game.events.emit(EV.toast, 'The dog catcher is shaking in his boots! Pepper is big enough to eat him now.');
     }
 
     const dx = this.x - c.x, dy = this.y - c.y, d = Math.hypot(dx, dy) || 1;
-    let ang = Math.atan2(dy, dx) + (c.fleeing ? Math.PI : 0);
+    let ang = Math.atan2(dy, dx);
     if (c.detour > 0) { c.detour -= dt; ang += c.detourAng; }
 
-    // He keeps up with a growing Pepper, and lunges with the net when he's close.
-    let speed = c.fleeing ? 0.72 * speedFor(this.r) : Math.max(CATCHER_SPEED, 0.8 * speedFor(this.r));
+    // His net grows to fit Pepper, so he's a threat right up until she's big enough to eat him.
+    c.t += dt;
+    c.net = Math.max(c.net, catcherNet(this.r));
+    const { reach, hoop } = netReach(c.net);
+
+    // He keeps up with a growing Pepper, and lunges with the net when he's close. Once she can eat him he freezes.
+    let speed = c.cowering ? 0 : Math.max(CATCHER_SPEED, 0.8 * speedFor(this.r));
     if (c.stun > 0) { c.stun -= dt; speed = 0; }
     c.cool -= dt;
-    if (!c.fleeing && c.lunge <= 0 && c.cool <= 0 && d < this.r + CATCHER_RAD + 260) { c.lunge = 0.55; c.cool = 2.6; }
+    if (!c.cowering && c.lunge <= 0 && c.cool <= 0 && d < this.r + reach + hoop + 150) { c.lunge = 0.55; c.cool = 2.6; }
     if (c.lunge > 0) { c.lunge -= dt; speed *= 1.7; }
     const a = 1 - Math.exp(-dt * 8);
     c.vx += (Math.cos(ang) * speed - c.vx) * a;
@@ -1114,12 +1126,19 @@ export class GameScene extends Phaser.Scene {
       c.checkT = 0; c.lastX = c.x; c.lastY = c.y;
     }
     const v = Math.hypot(c.vx, c.vy);
-    if (v > 10) c.heading = Phaser.Math.Angle.RotateTo(c.heading, Math.atan2(c.vy, c.vx), dt * 10);
+    // Cowering, he keeps his eyes (and his net) on Pepper.
+    if (c.cowering) c.heading = Phaser.Math.Angle.RotateTo(c.heading, Math.atan2(dy, dx), dt * 6);
+    else if (v > 10) c.heading = Phaser.Math.Angle.RotateTo(c.heading, Math.atan2(c.vy, c.vx), dt * 10);
     c.gait += (v / 45) * dt;
 
-    if (d < this.r + CATCHER_RAD + (c.lunge > 0 ? 30 : 5)) {
-      if (big) this.eatCatcher(); else this.getCaught();
+    if (big) {
+      if (d < this.r + CATCHER_RAD + 5) this.eatCatcher();
+      return;
     }
+    // Bumping into him gets her caught, and so does the hoop of his net coming down on her.
+    const hx = c.x + Math.cos(c.heading) * reach, hy = c.y + Math.sin(c.heading) * reach;
+    const netted = c.lunge > 0 && c.swing > 0.5 && Math.hypot(this.x - hx, this.y - hy) < this.r * 0.6 + hoop;
+    if (netted || d < this.r + CATCHER_RAD + 5) this.getCaught();
   }
 
   private getCaught() {
@@ -1174,8 +1193,9 @@ export class GameScene extends Phaser.Scene {
     if (!c) { this.world.setArrow('catcher', false); return; }
     const target = c.lunge > 0 || (this.finished && c.eatenT < 0) ? 1 : 0;
     c.swing += (target - c.swing) * (1 - Math.exp(-dt * 14));
+    c.cower += ((c.cowering ? 1 : 0) - c.cower) * (1 - Math.exp(-dt * 8));
     const scale = c.eatenT >= 0 ? 1 - Math.min(1, (c.eatenT += dt) / 0.3) : 1;
-    this.world.catcher.pose({ x: c.x, y: c.y, heading: c.heading, gait: c.gait, swing: c.swing, scale });
+    this.world.catcher.pose({ x: c.x, y: c.y, heading: c.heading, gait: c.gait, swing: c.swing, scale, net: c.net, cower: c.cower, t: c.t });
 
     // A red arrow floating above Pepper's head points to him while he's off screen.
     const d = Math.hypot(c.x - this.x, c.y - this.y);
