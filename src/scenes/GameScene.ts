@@ -17,7 +17,7 @@ import {
 import { ITEMS } from '../art/items';
 import { Placed, World3D, getWorld } from '../world3d/World3D';
 import { netReach } from '../world3d/catcher3d';
-import { ENDING_CARD } from '../world3d/ending';
+import { DREAM } from '../world3d/ending';
 import { EV, Goal, PowerState, RunStats } from './events';
 
 interface Thing extends Placed {
@@ -91,6 +91,9 @@ const PUSH_MIN = 0.1;
 /** Sizes of the cells in the stacked spatial hashes, from crumbs up to whole towns. */
 const TIERS = [200, 2000, 20000, 200000];
 
+/** True until the first run starts: only then does Pepper wait for the title card before waking. */
+let firstRun = true;
+
 export class GameScene extends Phaser.Scene {
   /** The whole world as one level. */
   private level!: Level;
@@ -157,7 +160,11 @@ export class GameScene extends Phaser.Scene {
   private happy = 0;
   private lastPop = 0;
   private started = false;
+  /** Waking up in her bed, before play starts. */
+  private waking = false;
   private finished = false;
+  /** How big Pepper got in the ending, for the finish card. */
+  private endR = 0;
   /** The run's stats, held back while the ending plays. */
   private endStats: RunStats | null = null;
   private eatenCount = 0;
@@ -188,7 +195,7 @@ export class GameScene extends Phaser.Scene {
     this.r = this.shownR = START_R;
     this.vx = this.vy = 0; this.heading = -Math.PI / 2; this.walkPhase = 0; this.chomp = 0;
     this.biteT = -1; this.happy = 0; this.lastPop = 0;
-    this.started = false; this.finished = false; this.endStats = null; this.eatenCount = 0; this.tooSmallUntil = 0;
+    this.started = false; this.waking = false; this.finished = false; this.endStats = null; this.endR = 0; this.eatenCount = 0; this.tooSmallUntil = 0;
     this.outside = false; this.seen = new Set(['house']); this.houseGone = false;
     this.catcher = null; this.catcherEaten = false; this.zoom = 1;
     this.houses = []; this.housesEaten = 0; this.hoodsEaten = 0; this.townsEaten = 0; this.citiesEaten = 0; this.islesEaten = 0; this.mainlandEaten = 0;
@@ -210,7 +217,22 @@ export class GameScene extends Phaser.Scene {
     this.stick = new Joystick(this);
     this.stick.setEnabled(() => this.started && !this.finished && !this.picking);
 
-    const onStart = () => { this.started = true; this.startTime = this.time.now; };
+    // Every run opens on Pepper asleep in her bed. The first time, the title card is up and she wakes when the
+    // player presses start; after that she wakes straight away (from the ending, she was already dreaming).
+    const carryOn = this.world.startIntro();
+    this.game.events.emit(EV.hud, false);
+    const onStart = () => {
+      if (this.started || this.waking) return;
+      this.waking = true;
+      this.world.wakeIntro(() => {
+        this.waking = false;
+        this.started = true;
+        this.startTime = this.time.now;
+        this.game.events.emit(EV.hud, true);
+      }, firstRun || carryOn ? 0 : 1.2);
+    };
+    if (!firstRun) this.time.delayedCall(0, onStart);
+    firstRun = false;
     this.game.events.on(EV.start, onStart);
     const onPick = (id: PowerId) => this.takePower(id);
     this.game.events.on(EV.pick, onPick);
@@ -390,14 +412,18 @@ export class GameScene extends Phaser.Scene {
     // The ending plays on its own; the HUD keeps up with how big Pepper is getting.
     const km = this.world.endingKm();
     if (km !== null) {
-      this.game.events.emit(EV.size, Math.max(this.r, km * 50000));
+      this.endR = Math.max(this.r, km * 50000);
+      this.game.events.emit(EV.size, this.endR);
+      // As the orbit shrinks into her dream, the HUD goes, just as it was before the run began.
+      if ((this.world.endingTime() ?? 0) >= DREAM) this.game.events.emit(EV.hud, false);
       this.world.render(dt);
-      // The finish card comes up once she's settled into orbit.
-      if (this.endStats && (this.world.endingTime() ?? 0) >= ENDING_CARD) {
-        this.game.events.emit(EV.done, { ...this.endStats, r: Math.max(this.r, km * 50000) });
-        this.endStats = null;
-      }
       return;
+    }
+    if (this.endStats) {
+      // The ending is over and she's back asleep in her bed: the finish card comes up over her.
+      const stats = { ...this.endStats, r: this.endR };
+      this.endStats = null;
+      this.time.delayedCall(700, () => this.game.events.emit(EV.done, stats));
     }
     if (this.started && !this.finished && !this.picking) {
       this.step(time, dt);

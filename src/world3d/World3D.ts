@@ -6,7 +6,8 @@ import { FLOOR_TILE_WORLD, floorCanvases } from '../art/textures';
 import type { Level, Seg } from '../game/level';
 import { Catcher3D } from './catcher3d';
 import { Dog3D, DogPose } from './dog3d';
-import { Ending } from './ending';
+import { DREAM, DREAM_END, Ending } from './ending';
+import { Intro, LOOP } from './intro';
 import { ModelBuilder, ink, inkResolution, inkedMesh, paint } from './toon';
 
 const COUNTER_H = 26;
@@ -48,6 +49,14 @@ export class World3D {
   readonly dog = new Dog3D();
   /** The ending, once Pepper reaches space; while it runs, it's what gets drawn. */
   private ending: Ending | null = null;
+  /** Pepper asleep in her bed, dreaming: the start of every run and the end of the ending. Drawn over the game while it plays. */
+  private intro: Intro | null = null;
+  private introOn = false;
+  /** A full-screen picture laid over the frame, for fading one shot into another. */
+  private overlay = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.MeshBasicMaterial({ transparent: true, depthTest: false, depthWrite: false }));
+  private overlayScene = new THREE.Scene();
+  private overlayCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  private screenTarget: THREE.WebGLRenderTarget | null = null;
   readonly catcher = new Catcher3D();
   private scene = new THREE.Scene();
   private camera = new THREE.PerspectiveCamera(FOV, 1, 1, 10000);
@@ -458,6 +467,29 @@ export class World3D {
     this.dog.pose(p);
   }
 
+  /**
+   * Shows Pepper asleep in her bed, dreaming, from the first frame of the loop. If she's already dreaming
+   * (the ending just finished there), she carries on undisturbed and this returns true.
+   */
+  startIntro() {
+    if (!this.intro) { this.intro = new Intro(); this.overlayScene.add(this.overlay); }
+    const carryOn = this.introOn && this.intro.dreaming;
+    if (!carryOn) this.intro.reset();
+    this.introOn = true;
+    return carryOn;
+  }
+
+  /** She wakes up; `done` runs once the room has faded in around her and play can start. */
+  wakeIntro(done: () => void, delay = 0) {
+    if (!this.intro || !this.introOn) { done(); return; }
+    this.intro.wake(done, delay);
+  }
+
+  /** True while the intro covers the game (all of it, or fading out). */
+  introShowing() {
+    return this.introOn;
+  }
+
   /** Plays the ending: Pepper eats the Earth, then orbits the sun. */
   startEnding() {
     if (!this.ending) this.ending = new Ending(this.dog);
@@ -547,11 +579,87 @@ export class World3D {
 
   render(dt: number) {
     this.time += dt;
+    const aspect = this.camera.aspect;
     if (this.ending) {
-      this.ending.update(dt, this.camera.aspect);
-      this.renderer.render(this.ending.scene, this.ending.camera);
+      const e = this.ending;
+      if (e.t + dt < DREAM) {
+        e.update(dt, aspect);
+        this.renderer.render(e.scene, e.camera);
+        return;
+      }
+      // The orbit shrinks into Pepper's dream bubble: it was all a dream.
+      if (!this.introOn) this.startIntro();
+      const intro = this.intro!;
+      e.update(dt, 1);
+      if (e.t >= DREAM_END) {
+        // Back to the very first frame of the intro, so the game loops round seamlessly.
+        this.stopEnding();
+        intro.endingDone();
+        this.drawIntro(intro, aspect);
+        intro.advance(dt);
+        return;
+      }
+      const k = (e.t - DREAM) / (DREAM_END - DREAM);
+      // Loop time counts up to exactly 0 (the intro's first frame) as the slide finishes
+      intro.dreamFromEnding(k, ((e.t - DREAM_END) % LOOP + LOOP) % LOOP);
+      this.renderer.setRenderTarget(intro.orbitTarget);
+      this.renderer.render(e.scene, e.camera);
+      this.renderer.setRenderTarget(null);
+      this.drawIntro(intro, aspect);
+      // The full-screen orbit fades away round the bubble as the bubble takes over the middle of it
+      const fade = 1 - Math.min(1, k / 0.12);
+      if (fade > 0) {
+        e.camera.aspect = aspect;
+        e.camera.updateProjectionMatrix();
+        this.drawOver(e.scene, e.camera, fade);
+      }
       return;
     }
+    if (this.intro && this.introOn) {
+      const intro = this.intro, show = intro.opacity;
+      if (show >= 1) {
+        // Nothing of the game shows yet
+        this.drawIntro(intro, aspect);
+        intro.advance(dt);
+        return;
+      }
+      // The room fades in round her: draw the game, then the intro over it, fading out
+      this.renderGame(dt);
+      intro.update(aspect);
+      intro.renderDream(this.renderer);
+      this.drawOver(intro.scene, intro.camera, show);
+      if (intro.advance(dt)) this.introOn = false;
+      return;
+    }
+    this.renderGame(dt);
+  }
+
+  private drawIntro(intro: Intro, aspect: number) {
+    intro.update(aspect);
+    intro.renderDream(this.renderer);
+    this.renderer.render(intro.scene, intro.camera);
+  }
+
+  /** Draws `scene` over what's already on screen, at `opacity`. */
+  private drawOver(scene: THREE.Scene, camera: THREE.Camera, opacity: number) {
+    const size = this.renderer.getDrawingBufferSize(new THREE.Vector2());
+    if (!this.screenTarget || this.screenTarget.width !== size.x || this.screenTarget.height !== size.y) {
+      this.screenTarget?.dispose();
+      this.screenTarget = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: 4 });
+    }
+    this.renderer.setRenderTarget(this.screenTarget);
+    this.renderer.render(scene, camera);
+    this.renderer.setRenderTarget(null);
+    const mat = this.overlay.material as THREE.MeshBasicMaterial;
+    if (mat.map !== this.screenTarget.texture) { mat.map = this.screenTarget.texture; mat.needsUpdate = true; }
+    mat.opacity = opacity;
+    if (!this.overlay.parent) this.overlayScene.add(this.overlay);
+    this.renderer.autoClear = false;
+    this.renderer.render(this.overlayScene, this.overlayCam);
+    this.renderer.autoClear = true;
+  }
+
+  private renderGame(dt: number) {
     this.anims = this.anims.filter((a) => {
       a.t += dt;
       const k = Math.min(1, a.t / a.dur);

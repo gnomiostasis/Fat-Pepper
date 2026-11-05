@@ -8,6 +8,9 @@ import { touchDevice } from './joystick';
 const DISPLAY = '"Lilita One", "Arial Rounded MT Bold", sans-serif';
 const BODY = '"Nunito", "Segoe UI", system-ui, sans-serif';
 
+/** The title card shows once, over Pepper asleep in the first run's intro. Later runs go straight in. */
+let titleShown = false;
+
 interface FeedLine { name: string; count: number; text: Phaser.GameObjects.Text; at: number }
 
 /** HUD and the start and finish cards, drawn on top of the game. */
@@ -29,6 +32,8 @@ export class UIScene extends Phaser.Scene {
   private nextLabel!: Phaser.GameObjects.Text;
   private chips!: Phaser.GameObjects.Container;
   private picker?: Phaser.GameObjects.Container;
+  /** The HUD is hidden while Pepper sleeps in her bed (before a run, and at the very end). */
+  private hudOn = false;
 
   constructor() {
     super('ui');
@@ -40,6 +45,7 @@ export class UIScene extends Phaser.Scene {
     this.goal = { from: START_R, to: DOOR_R, label: 'Dog door at', reached: 'Dog door: OPEN!' };
     this.powers = { stacks: {}, next: MILESTONES[0] };
     this.picker = undefined;
+    this.hudOn = false;
 
     this.panel = this.add.graphics();
     this.sizeLabel = this.add.text(0, 0, 'PEPPER', { fontFamily: DISPLAY, fontSize: '14px', color: PAL.rust }).setLetterSpacing(2);
@@ -63,18 +69,32 @@ export class UIScene extends Phaser.Scene {
     const onGoal = (g: Goal) => { this.goal = g; this.drawHud(); };
     const onPowers = (p: PowerState) => { this.powers = p; this.drawHud(); };
     const onOffer = (choices: PowerDef[], first: boolean) => this.showPicker(choices, first);
+    const onHud = (on: boolean) => this.setHud(on);
     bus.on(EV.size, onSize); bus.on(EV.eat, onEat); bus.on(EV.toast, onToast); bus.on(EV.done, onDone); bus.on(EV.goal, onGoal);
-    bus.on(EV.powers, onPowers); bus.on(EV.offer, onOffer);
+    bus.on(EV.powers, onPowers); bus.on(EV.offer, onOffer); bus.on(EV.hud, onHud);
     const onResize = () => this.layout();
     this.scale.on('resize', onResize);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       bus.off(EV.size, onSize); bus.off(EV.eat, onEat); bus.off(EV.toast, onToast); bus.off(EV.done, onDone); bus.off(EV.goal, onGoal);
-      bus.off(EV.powers, onPowers); bus.off(EV.offer, onOffer);
+      bus.off(EV.powers, onPowers); bus.off(EV.offer, onOffer); bus.off(EV.hud, onHud);
       this.scale.off('resize', onResize);
     });
 
     this.layout();
-    this.showStart();
+    this.setHud(false, true);
+    if (!titleShown) { titleShown = true; this.showStart(); }
+  }
+
+  /** Shows or hides the HUD: it fades in as Pepper wakes into a run and out as the ending turns into her dream. */
+  private setHud(on: boolean, now = false) {
+    if (on === this.hudOn && !now) return;
+    this.hudOn = on;
+    const parts = [this.panel, this.sizeLabel, this.sizeText, this.doorLabel, this.bar, this.nextLabel, this.chips];
+    this.space.setVisible(on);
+    this.tweens.killTweensOf(parts);
+    if (now) { for (const p of parts) p.setAlpha(on ? 1 : 0); return; }
+    this.tweens.add({ targets: parts, alpha: on ? 1 : 0, duration: on ? 300 : 500 });
+    if (!on) for (const f of this.feed) this.tweens.add({ targets: f.text, alpha: 0, duration: 300 });
   }
 
   private layout() {
@@ -311,7 +331,7 @@ export class UIScene extends Phaser.Scene {
       won
         ? `${formatSize(s.r)} of very good dog. She ate ${s.eaten} things in ${m}:${sec}, including ${houses}, ${hoods}, ${towns}, ${cities} and ${isles}.`
         : `The dog catcher netted Pepper at ${formatSize(s.r)}, after she ate ${s.eaten} things in ${m}:${sec}. Off to the pound!`,
-      this.buildLine(s.stacks) || (won ? 'Not a crumb left. Now she orbits the sun.' : 'Keep moving and keep eating: he speeds up as you grow.'),
+      this.buildLine(s.stacks) || (won ? 'Not a crumb left. Or was it all a dream?' : 'Keep moving and keep eating: he speeds up as you grow.'),
       won ? 'Play again' : 'Try again',
       () => {
         this.scene.get('game').scene.restart();
