@@ -28,6 +28,12 @@ export interface DogPose {
   lunge: number;
   /** 0..1, past fat: her body goes perfectly round (the ending, in orbit round the sun). */
   round?: number;
+  /** 0..1, lying curled up in her bed (the intro): legs tucked, chin down, tail wrapped round. */
+  sleep?: number;
+  /** 0 eyes open, 1 shut. */
+  lids?: number;
+  /** -1..1, the rise and fall of her breathing while she sleeps. */
+  breath?: number;
 }
 
 /**
@@ -41,6 +47,7 @@ export class Dog3D {
   private head = new THREE.Group();
   private collar = new THREE.Group();
   private tail = new THREE.Group();
+  private lids: THREE.Group[] = [];
   private legs: { pivot: THREE.Group; x: number; z: number; ph: number }[] = [];
   private silMat = new THREE.MeshBasicMaterial({
     color: PAL.ink, opacity: 0.35, transparent: false, depthWrite: false, depthFunc: THREE.GreaterDepth,
@@ -70,6 +77,15 @@ export class Dog3D {
           .coneAt(-0.05, 0.25, 0.14 * s, 0.085, 0.2, PAL.dogBlack, { sz: 0.6, rx: 0.35 * s, rz: -0.25 });
       }
     });
+    // Eyelids: a dab of black fur over each eye, squashed flat while her eyes are open.
+    for (const s of [-1, 1]) {
+      const lid = new THREE.Group();
+      lid.position.set(0.178, 0.083, 0.14 * s);
+      this.head.add(lid);
+      this.part(lid, (b) => b.ball(0, 0, 0, 0.042, PAL.dogBlack, { ink: false }));
+      lid.scale.setScalar(0.001);
+      this.lids.push(lid);
+    }
 
     this.collar.position.set(0.43, 0.62, 0);
     this.part(this.collar, (b) => b
@@ -115,21 +131,27 @@ export class Dog3D {
     this.body.scale.set(s * (1 - sq * 0.6), s * (1 - sq * 0.3), s * (1 + sq));
 
     const k = p.round ?? 0;
+    const z = p.sleep ?? 0, br = (p.breath ?? 0) * z;
     // Round means a ball 0.8 across in every direction
-    this.torso.scale.set((1 + 0.3 * f) * (1 - k) + 1.6 * k, (1 + 0.75 * f) * (1 - k) + 2.58 * k, (1 + 0.9 * f) * (1 - k) + 2.42 * k);
-    this.torso.position.y = 0.45 + 0.12 * f + 0.25 * k;
-    this.head.position.set(0.6 + 0.15 * f, 0.74 + 0.1 * f, 0);
-    this.head.rotation.z = -p.chomp * 0.45;
+    this.torso.scale.set((1 + 0.3 * f) * (1 - k) + 1.6 * k, ((1 + 0.75 * f) * (1 - k) + 2.58 * k) * (1 + 0.05 * br), ((1 + 0.9 * f) * (1 - k) + 2.42 * k) * (1 + 0.04 * br));
+    // Lying down, everything drops by about her leg length
+    const drop = 0.3 * z;
+    this.torso.position.y = 0.45 + 0.12 * f + 0.25 * k - drop;
+    this.head.position.set(0.6 + 0.15 * f + 0.06 * z, 0.74 + 0.1 * f - drop - 0.12 * z, 0.05 * z);
+    this.head.rotation.set(0.25 * z, -0.3 * z, -p.chomp * 0.45 - 0.12 * z);
     this.head.scale.setScalar(1 + 0.2 * f);
-    this.collar.position.set(0.43 + 0.15 * f, 0.62 + 0.1 * f, 0);
+    this.collar.position.set(0.43 + 0.15 * f, 0.62 + 0.1 * f - drop, 0);
     this.collar.scale.setScalar(1 + 0.5 * f);
-    this.tail.position.set(-0.48 - 0.15 * f, 0.58 + 0.08 * f, 0);
-    this.tail.rotation.set(0, p.wag, 0.25);
+    this.tail.position.set(-0.48 - 0.15 * f, 0.58 + 0.08 * f - drop - 0.12 * z, 0);
+    // Asleep, her tail curls round her side
+    this.tail.rotation.set(0, p.wag * (1 - z) - 2.2 * z, 0.25 * (1 - z));
+    const lid = Math.max(0.001, p.lids ?? 0);
+    for (const l of this.lids) l.scale.set(1.05, lid * 1.05, 1.05);
 
-    // Trot: diagonal legs swing together; fat pushes them out to the sides.
+    // Trot: diagonal legs swing together; fat pushes them out to the sides. Asleep, they fold forward under her.
     for (const l of this.legs) {
-      l.pivot.position.set(l.x * (1 + 0.25 * f), 0.42, l.z * (1 + 0.8 * f));
-      l.pivot.rotation.z = Math.sin(p.gait + l.ph) * 0.6 * p.moving;
+      l.pivot.position.set(l.x * (1 + 0.25 * f) + 0.08 * z, 0.42 - drop * 0.95, l.z * (1 + 0.8 * f) * (1 + 0.15 * z));
+      l.pivot.rotation.z = Math.sin(p.gait + l.ph) * 0.6 * p.moving * (1 - z) + 1.45 * z;
     }
   }
 }

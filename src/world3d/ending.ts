@@ -4,15 +4,16 @@ import type { Dog3D } from './dog3d';
 import { paint } from './toon';
 
 // The ending, after Pepper reaches space: she keeps on growing until the whole Earth is a snack, gulps it
-// down, and then, a full round ball of a dog, goes into orbit round the sun.
+// down, and then, a full round ball of a dog, goes into orbit round the sun. Then the orbit shrinks into a
+// thought bubble over her, asleep in her bed: it was all a dream, and the game is back where it started.
 
 /** Earth's radius in this little scene's units, and how many km one unit is. */
 const EARTH = 10;
 const KM_PER_UNIT = 6371 / EARTH;
 /** When things happen, in seconds. */
 const GROW = 4.2, CHOMP = 4.2, GULP = 5.2, FADE_OUT = 6.6, SWITCH = 7.3, FADE_IN = 8.1;
-/** How long before the finish card comes up over the orbit. */
-export const ENDING_CARD = 11;
+/** When the orbit shot starts shrinking into Pepper's dream bubble, and when she's back asleep in her bed (see intro.ts). */
+export const DREAM = 13, DREAM_END = 17.5;
 
 const rand = (lo: number, hi: number) => lo + Math.random() * (hi - lo);
 
