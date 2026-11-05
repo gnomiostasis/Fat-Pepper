@@ -26,6 +26,8 @@ export interface DogPose {
   chomp: number;
   /** Forward hop during a bite, in cm. */
   lunge: number;
+  /** 0..1, past fat: her body goes perfectly round (the ending, in orbit round the sun). */
+  round?: number;
 }
 
 /**
@@ -112,8 +114,10 @@ export class Dog3D {
     this.root.rotation.y = -p.heading;
     this.body.scale.set(s * (1 - sq * 0.6), s * (1 - sq * 0.3), s * (1 + sq));
 
-    this.torso.scale.set(1 + 0.3 * f, 1 + 0.75 * f, 1 + 0.9 * f);
-    this.torso.position.y = 0.45 + 0.12 * f;
+    const k = p.round ?? 0;
+    // Round means a ball 0.8 across in every direction
+    this.torso.scale.set((1 + 0.3 * f) * (1 - k) + 1.6 * k, (1 + 0.75 * f) * (1 - k) + 2.58 * k, (1 + 0.9 * f) * (1 - k) + 2.42 * k);
+    this.torso.position.y = 0.45 + 0.12 * f + 0.25 * k;
     this.head.position.set(0.6 + 0.15 * f, 0.74 + 0.1 * f, 0);
     this.head.rotation.z = -p.chomp * 0.45;
     this.head.scale.setScalar(1 + 0.2 * f);

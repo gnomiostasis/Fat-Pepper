@@ -93,11 +93,12 @@ export class UIScene extends Phaser.Scene {
     const open = this.r >= g0.to;
     this.doorLabel.setText(open ? g0.reached : `${g0.label} ${formatSize(g0.to)}`);
     // Wide enough for the longest goals
-    const pw = Math.max(190, Math.ceil(this.doorLabel.width) + 32), ph = 108, x = 16, y = 16;
+    this.sizeText.setText(formatSize(this.r));
+    const pw = Math.max(190, Math.ceil(this.doorLabel.width) + 32, Math.ceil(this.sizeText.width) + 30), ph = 108, x = 16, y = 16;
     const g = this.panel.clear();
     card(g, x, y, pw, ph, PAL.cream);
     this.sizeLabel.setPosition(x + 16, y + 12);
-    this.sizeText.setText(formatSize(this.r)).setPosition(x + 14, y + 26);
+    this.sizeText.setPosition(x + 14, y + 26);
 
     const pct = Math.max(0, Math.min(1, (this.r - g0.from) / (g0.to - g0.from)));
     this.doorLabel.setPosition(x + 16, y + 72);
@@ -307,11 +308,11 @@ export class UIScene extends Phaser.Scene {
     const cities = `${s.cities} whole cit${s.cities === 1 ? 'y' : 'ies'}`;
     const isles = `${s.islands} whole island${s.islands === 1 ? '' : 's'}`;
     this.showCard(
-      won ? 'Pepper reached space!' : 'Gotcha!',
+      won ? 'Pepper ate the world!' : 'Gotcha!',
       won
         ? `${formatSize(s.r)} of very good dog. She ate ${s.eaten} things in ${m}:${sec}, including ${houses}, ${hoods}, ${towns}, ${cities} and ${isles}.`
         : `The dog catcher netted Pepper at ${formatSize(s.r)}, after she ate ${s.eaten} things in ${m}:${sec}. Off to the pound!`,
-      this.buildLine(s.stacks) || (won ? 'Not a crumb left.' : 'Keep moving and keep eating: he speeds up as you grow.'),
+      this.buildLine(s.stacks) || (won ? 'Not a crumb left. Now she orbits the sun.' : 'Keep moving and keep eating: he speeds up as you grow.'),
       won ? 'Play again' : 'Try again',
       () => {
         this.scene.get('game').scene.restart();
@@ -344,6 +345,7 @@ export class UIScene extends Phaser.Scene {
       dim.setSize(w, h);
       tBody.setWordWrapWidth(inner); tSmall.setWordWrapWidth(inner);
       tTitle.setFontSize(cw < 380 ? 40 : 52);
+      for (let fs = cw < 380 ? 40 : 52; tTitle.width > inner && fs > 26; fs -= 2) tTitle.setFontSize(fs - 2);
       const ch = 28 + tTitle.height + 12 + tBody.height + 14 + tSmall.height + 24 + 52 + 28;
       const x = (w - cw) / 2, y = Math.max(16, (h - ch) / 2);
       g.clear(); card(g, x, y, cw, ch, PAL.cream);
