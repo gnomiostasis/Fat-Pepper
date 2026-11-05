@@ -20,6 +20,8 @@ export const EV = {
   pick: 'fp-pick',
   /** game → HUD: Pepper's powerups changed; payload is PowerState. */
   powers: 'fp-powers',
+  /** game → HUD: show or hide the HUD (hidden while Pepper sleeps in the intro); payload is a boolean. */
+  hud: 'fp-hud',
 } as const;
 
 /** What the HUD shows about powerups. */
