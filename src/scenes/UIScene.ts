@@ -283,7 +283,7 @@ export class UIScene extends Phaser.Scene {
   private showStart() {
     this.showCard(
       'Fat Pepper',
-      'Pepper is a tiny puppy with a big appetite. Eat anything smaller than you, grow big enough to jump out the dog door, then eat your way through the neighborhood, the town and the countryside beyond. Every few sizes you pick a powerup, and they stack. Watch out for the dog catcher!',
+      'Pepper is a tiny puppy with a big appetite. Eat anything smaller than you, grow big enough to jump out the dog door, then keep going: the neighborhood, the town and the countryside are all out there, one big world to eat. Every few sizes you pick a powerup, and they stack. Watch out for the dog catcher!',
       touchDevice()
         ? 'Put your thumb down anywhere and drag to steer Pepper. Drag further to run faster. Keyboards: arrow keys or WASD.'
         : 'Move with the arrow keys or WASD, or hold the mouse where Pepper should go.',

@@ -3,18 +3,15 @@ import { ITEM_BY_ID, ItemDef } from '../art/items';
 import { PAL, hexNum } from '../art/palette';
 import { CHOMP_WORDS, chompKey } from '../art/textures';
 import { Joystick, isTouch } from './joystick';
-import { buildHouse } from '../game/house';
 import type { Box, Level, Pt, Seg } from '../game/level';
-import { Grid } from '../game/grid';
-import { buildNeighborhood } from '../game/neighborhood';
-import { buildTown } from '../game/town';
-import { buildCountry } from '../game/country';
+import { Tiers } from '../game/grid';
+import { Region, RegionName, World, buildWorld } from '../game/world';
 import {
   APPETITE, JAWS, MILESTONES, POWER_BY_ID, PowerId, RUSH, RUSH_TIME, SNEAKY, STREAK, STREAK_CAP, STREAK_GAP,
   Stacks, TONGUE, ZOOMIES, rollChoices,
 } from '../game/powerups';
 import {
-  CATCHER_R, CATCHER_RAD, CATCHER_SIZE, CATCHER_SPEED, DOOR_R, EAT_RATIO, GROW_K, HOUSE_BITE, START_R, STREET_R, TOWN_R, COUNTRY_R, COUNTRY_STEP_R, WALL_R, WIN_R,
+  CATCHER_R, CATCHER_RAD, CATCHER_SIZE, CATCHER_SPEED, DOOR_R, EAT_RATIO, GROW_K, HOUSE_BITE, START_R, STREET_R, TOWN_R, WALL_R, WIN_R,
   canHop, fatFor, formatSize, grownRadius, OUTDOOR_ZOOM, speedFor, viewFor,
 } from '../game/tuning';
 import { ITEMS } from '../art/items';
@@ -76,11 +73,22 @@ interface Catcher {
   stun: number;
 }
 
+/** Sizes of the cells in the stacked spatial hashes, from crumbs up to whole towns. */
+const TIERS = [200, 2000, 20000, 200000];
+
 export class GameScene extends Phaser.Scene {
-  private house!: Level;
-  /** Where the run is: 0 in the house, 1 the neighborhood, 2 the town, 3 the countryside. */
-  private stage = 0;
-  private get outside() { return this.stage > 0; }
+  /** The whole world as one level. */
+  private level!: Level;
+  /** Its parts, from the inside out: the house, the neighborhood, the town, the countryside. */
+  private regions: Region[] = [];
+  private houseBox!: Box;
+  /** Pepper has been out the dog door. */
+  private outside = false;
+  /** The parts of the world Pepper has set foot in, each greeted once. */
+  private seen = new Set<RegionName>();
+  /** The house's own walls come first in the level's walls; eating any of them takes the rest of the house with it. */
+  private houseWallN = 0;
+  private houseGone = false;
   /** Extra camera pull-back: 1 indoors, easing up to OUTDOOR_ZOOM once outside. */
   private zoom = 1;
   private catcher: Catcher | null = null;
@@ -104,8 +112,8 @@ export class GameScene extends Phaser.Scene {
   /** Which thing each piece of furniture's collision box belongs to. */
   private boxOwner = new Map<Box, Thing>();
   /** Things and solid boxes by where they are, so only the ones near Pepper get checked each frame. */
-  private grid = new Grid<Thing>(100);
-  private solidGrid = new Grid<Box>(100);
+  private grid = new Tiers<Thing>(TIERS);
+  private solidGrid = new Tiers<Box>(TIERS);
   /** Walls and the kitchen counter. */
   private segs: Seg[] = [];
   private doorFlap: Box | null = null;
@@ -161,7 +169,8 @@ export class GameScene extends Phaser.Scene {
     this.vx = this.vy = 0; this.heading = -Math.PI / 2; this.walkPhase = 0; this.chomp = 0;
     this.biteT = -1; this.happy = 0; this.lastPop = 0;
     this.started = false; this.finished = false; this.eatenCount = 0; this.tooSmallUntil = 0;
-    this.stage = 0; this.catcher = null; this.catcherEaten = false; this.zoom = 1;
+    this.outside = false; this.seen = new Set(['house']); this.houseGone = false;
+    this.catcher = null; this.catcherEaten = false; this.zoom = 1;
     this.houses = []; this.housesEaten = 0; this.hoodsEaten = 0; this.townsEaten = 0;
     // One free pick as soon as the run starts.
     this.stacks = {}; this.milestone = 0; this.pendingPicks = 1; this.picking = false;
@@ -170,7 +179,7 @@ export class GameScene extends Phaser.Scene {
     // The level is drawn in 3D underneath; this scene keeps the rules and the comic pops.
     this.world = getWorld();
     this.world.catcher.show(false);
-    this.loadLevel(buildHouse());
+    this.loadWorld(buildWorld());
     this.heading = -Math.PI / 2;
 
     const kb = this.input.keyboard!;
@@ -197,11 +206,14 @@ export class GameScene extends Phaser.Scene {
 
   // ---------- setting up a level ----------
 
-  private loadLevel(level: Level) {
-    this.house = level;
+  private loadWorld(w: World) {
+    const level = w.level;
+    this.level = level;
+    this.regions = w.regions;
+    this.houseBox = w.regions[0].box;
+    this.houseWallN = w.regions[0].level.walls.length + (w.regions[0].level.frontDoor ? 1 : 0);
     this.things = []; this.segs = []; this.boxOwner.clear();
-    const cell = Math.max(100, Math.max(level.bounds.w, level.bounds.h) / 80);
-    this.grid = new Grid(cell); this.solidGrid = new Grid(cell);
+    this.grid = new Tiers(TIERS); this.solidGrid = new Tiers(TIERS);
     this.x = level.spawn.x; this.y = level.spawn.y;
     this.vx = this.vy = 0;
 
@@ -215,12 +227,10 @@ export class GameScene extends Phaser.Scene {
       return { i, box, poly: b.poly, edges, bite: long * HOUSE_BITE, area: polyArea(b.poly), eaten: false };
     });
     const edges = this.houses.flatMap((h) => h.edges);
-    this.fences = level.buildings.length
-      ? level.walls.map((seg, i) => ({ i, seg, eaten: false }))
-      : [...level.walls, ...level.counters].map((seg, i) => ({ i, seg, eaten: false }))
-        .filter((f) => f.seg.inner || f.i >= level.walls.length);
+    this.fences = [...level.walls, ...level.counters].map((seg, i) => ({ i, seg, eaten: false }));
+    // Pepper's own house counts as the biggest house on the street.
     this.fenceBite = this.houses.length ? Math.min(...this.houses.map((h) => h.bite)) : Infinity;
-    this.segs = [...level.walls, ...level.counters, ...edges, ...(level.frontDoor ? [level.frontDoor] : [])];
+    this.segs = [...level.walls, ...level.counters, ...edges];
     if (level.stairs) this.solidGrid.insertBox(level.stairs, level.stairs);
     this.doorFlap = null;
     if (level.door) {
@@ -231,7 +241,8 @@ export class GameScene extends Phaser.Scene {
     this.world.build(level);
     const decals: Placed[] = level.decals.map((d) => ({ def: ITEM_BY_ID[d.id], x: d.x, y: d.y, rot: Phaser.Math.DegToRad(d.rot) }));
     for (const spot of level.furniture) this.addFurniture(spot.id, spot.x, spot.y, spot.rot);
-    this.scatterItems();
+    // Loose things in each part of the world, kept out of the part inside it
+    w.regions.forEach((rg, i) => this.scatterItems(rg.level, i > 0 ? w.regions[i - 1].box : undefined, i === 0));
     this.world.addThings([...decals, ...this.things]);
     this.world.follow(this.x, this.y, this.viewCm(), 0, true);
     this.renderDog(0);
@@ -240,21 +251,14 @@ export class GameScene extends Phaser.Scene {
   /** Tells the HUD what Pepper is growing toward right now. */
   private emitGoal() {
     let goal: Goal;
-    if (this.stage === 3) {
-      const townR = this.townEatR();
-      goal = this.r < townR && this.townsEaten === 0
-        ? { from: COUNTRY_R, to: townR, label: 'Eat towns at', reached: 'Whole towns are on the menu!' }
-        : { from: townR, to: WIN_R, label: 'Eat the countryside at', reached: 'Pepper ate the countryside!' };
-    } else if (this.stage === 2) {
-      const hoodR = this.hoodEatR();
-      goal = this.r < hoodR && this.hoodsEaten === 0
-        ? { from: TOWN_R, to: hoodR, label: 'Eat neighborhoods at', reached: 'Neighborhoods are on the menu!' }
-        : { from: hoodR, to: COUNTRY_R, label: 'Off to the countryside at', reached: 'Off to the countryside! Waddle off any edge.' };
-    } else if (!this.outside) goal = { from: START_R, to: DOOR_R, label: 'Dog door at', reached: 'Dog door: OPEN!' };
+    const houseR = this.houseEatR(), hoodR = this.hoodEatR(), townR = this.townEatR();
+    if (!this.outside) goal = { from: START_R, to: DOOR_R, label: 'Dog door at', reached: 'Dog door: OPEN!' };
     else if (!this.catcher && !this.catcherEaten) goal = { from: DOOR_R, to: CATCHER_R, label: 'Dog catcher alert at', reached: 'The dog catcher is coming!' };
     else if (!this.catcherEaten) goal = { from: CATCHER_R, to: this.catcherEatR(), label: 'Eat the catcher at', reached: 'Eat the dog catcher!' };
-    else if (this.r < this.houseEatR()) goal = { from: this.catcherEatR(), to: this.houseEatR(), label: 'Eat houses at', reached: 'Houses are on the menu!' };
-    else goal = { from: this.houseEatR(), to: TOWN_R, label: 'Off to town at', reached: 'Off to town! Waddle off any edge of the map.' };
+    else if (this.r < houseR && this.housesEaten === 0) goal = { from: this.catcherEatR(), to: houseR, label: 'Eat houses at', reached: 'Houses are on the menu!' };
+    else if (this.r < hoodR && this.hoodsEaten === 0) goal = { from: Math.min(houseR, this.r), to: hoodR, label: 'Eat neighborhoods at', reached: 'Neighborhoods are on the menu!' };
+    else if (this.r < townR && this.townsEaten === 0) goal = { from: Math.min(hoodR, this.r), to: townR, label: 'Eat towns at', reached: 'Whole towns are on the menu!' };
+    else goal = { from: Math.min(townR, this.r), to: WIN_R, label: 'Eat the countryside at', reached: 'Pepper ate the countryside!' };
     this.game.events.emit(EV.goal, goal);
   }
 
@@ -284,8 +288,9 @@ export class GameScene extends Phaser.Scene {
     return this.solidGrid.near(x, y, r);
   }
 
-  private scatterItems() {
-    const h = this.house;
+  /** Scatters a part of the world's loose things over its rooms, keeping out of `hole` (the part inside it). */
+  private scatterItems(h: Level, hole?: Box, home = false) {
+    const w = this.level;
     const area = h.rooms.map((r) => r.box.w * r.box.h), total = area.reduce((a, b) => a + b, 0);
     const pickRoom = () => {
       let t = Math.random() * total;
@@ -299,12 +304,13 @@ export class GameScene extends Phaser.Scene {
       if (this.solidsNear(x, y, rad + 3).some((b) => circleBoxDist(x, y, b) < rad + 3)) return false;
       if (this.segs.some((sg) => segHit(x, y, sg).d < rad + sg.t / 2 + 3)) return false;
       if (this.grid.near(x, y, rad + 1).some((o) => !o.box && o.rad > 2 && Math.hypot(o.x - x, o.y - y) < rad + o.rad + 1)) return false;
+      if (hole && x > hole.x - rad && y > hole.y - rad && x < hole.x + hole.w + rad && y < hole.y + hole.h + rad) return false;
       if (this.buildingPolys.some((poly) => inPoly(x, y, poly))) return false;
       if (!this.canEat(def.size)) {
         // Keep the start spot and the ways through clear of anything Pepper can't eat yet.
-        if (Math.hypot(x - h.spawn.x, y - h.spawn.y) < rad + this.r * 6) return false;
-        if (h.door && Math.hypot(x - h.door.x, y - h.door.y) < rad + 80) return false;
-        if (h.doorways.some(([dx, dy]) => Math.hypot(x - dx, y - dy) < rad + Math.max(50, this.r * 2))) return false;
+        if (Math.hypot(x - w.spawn.x, y - w.spawn.y) < rad + this.r * 6) return false;
+        if (w.door && Math.hypot(x - w.door.x, y - w.door.y) < rad + 80) return false;
+        if (w.doorways.some(([dx, dy]) => Math.hypot(x - dx, y - dy) < rad + Math.max(50, this.r * 2))) return false;
       }
       this.addThing({ def, x, y, rot: Math.random() * Math.PI * 2, rad, eaten: false });
       return true;
@@ -331,7 +337,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     // Spills of tiny food. The first one lands right next to Pepper.
-    let first = true;
+    let first = home;
     for (const pile of h.piles) {
       const def = ITEM_BY_ID[pile.id];
       for (let n = 0; n < pile.piles; n++) {
@@ -415,14 +421,11 @@ export class GameScene extends Phaser.Scene {
     // before it can push her back, so she ploughs straight through houses, fences and furniture.
     this.eatNearby();
     this.collide(time);
-    const b = this.house.bounds;
+    if (this.finished) return;
+    const b = this.level.bounds;
     this.x = Phaser.Math.Clamp(this.x, b.x + this.r, b.x + b.w - this.r);
     this.y = Phaser.Math.Clamp(this.y, b.y + this.r, b.y + b.h - this.r);
-    // Too big for this map: walking into any edge takes her to the next one.
-    if (this.canLeave() && len > 0) {
-      const e = this.nearestEdge();
-      if (e.d < 2 && dx * Math.cos(e.a) + dy * Math.sin(e.a) > 0.3) { this.leaveMap(e.a); return; }
-    }
+    this.greet();
     this.pullSnacks(dt);
     this.eatNearby();
     this.stepCatcher(dt);
@@ -434,28 +437,39 @@ export class GameScene extends Phaser.Scene {
 
   private collide(time: number) {
     const r = this.r;
-    // In town, once Pepper is too wide for the streets she steps over whatever she can't eat yet.
-    // Out in the countryside the same goes once she's wider than the gaps between towns.
-    const overAll = (this.stage === 2 && r >= STREET_R) || (this.stage === 3 && r >= COUNTRY_STEP_R);
+    // Once Pepper is too wide for the town's streets she steps over whatever she can't eat yet,
+    // anywhere, so nothing in the whole world can box her in.
+    const overAll = r >= STREET_R;
+    const indoors = this.inHouse(this.x, this.y);
     for (const b of this.solidsNear(this.x, this.y, r + 1)) {
-      if (b !== this.doorFlap && !this.outside && canHop(r, Math.min(b.w, b.h))) continue;
-      if (overAll) continue;
+      if (b !== this.doorFlap && indoors && canHop(r, Math.min(b.w, b.h))) continue;
       const nx = Phaser.Math.Clamp(this.x, b.x, b.x + b.w), ny = Phaser.Math.Clamp(this.y, b.y, b.y + b.h);
       let ox = this.x - nx, oy = this.y - ny;
       const d = Math.hypot(ox, oy);
       if (d >= r) continue;
+      const id = this.boxOwner.get(b)?.def.id ?? '';
+      if (overAll) {
+        // Striding over a whole neighborhood or town: say when she'll be able to eat one.
+        if (time > this.tooSmallUntil && (HOODS.has(id) || TOWNS.has(id))) {
+          this.tooSmallUntil = time + 6000;
+          this.game.events.emit(EV.toast, HOODS.has(id)
+            ? `Pepper can gulp a whole neighborhood at ${formatSize(this.hoodEatR())}.`
+            : `Pepper can gulp a whole town at ${formatSize(this.townEatR())}.`);
+        }
+        continue;
+      }
 
       if (b === this.doorFlap) {
-        if (r >= DOOR_R) { this.exitThroughDoor(); return; }
-        if (time > this.tooSmallUntil) {
+        if (!this.outside && r >= DOOR_R) { this.exitThroughDoor(); return; }
+        if (!this.outside && time > this.tooSmallUntil) {
           this.tooSmallUntil = time + 2500;
           this.game.events.emit(EV.toast, `Too small! Pepper needs to be ${formatSize(DOOR_R)} to jump through.`);
           this.world.flapBump();
         }
-      } else if (this.stage === 2 && time > this.tooSmallUntil && HOODS.has(this.boxOwner.get(b)?.def.id ?? '')) {
+      } else if (time > this.tooSmallUntil && HOODS.has(id)) {
         this.tooSmallUntil = time + 4000;
         this.game.events.emit(EV.toast, `A whole neighborhood is too big to eat yet! Pepper can gulp one at ${formatSize(this.hoodEatR())}.`);
-      } else if (this.stage === 3 && time > this.tooSmallUntil && TOWNS.has(this.boxOwner.get(b)?.def.id ?? '')) {
+      } else if (time > this.tooSmallUntil && TOWNS.has(id)) {
         this.tooSmallUntil = time + 4000;
         this.game.events.emit(EV.toast, `A whole town is too big to eat yet! Pepper can gulp one at ${formatSize(this.townEatR())}.`);
       }
@@ -510,11 +524,15 @@ export class GameScene extends Phaser.Scene {
     for (const h of this.houses) {
       if (!h.eaten && this.canEat(h.bite) && circleBoxDist(this.x, this.y, h.box) < this.r + 8) this.eatHouse(h);
     }
-    // At house size the fences go too, so nothing on the map is left standing. Indoors, once Pepper
-    // is too big for the doorways, she chomps through the inside walls instead.
-    if (this.fences.length && (this.outside ? this.canEat(this.fenceBite) : this.r >= WALL_R)) {
+    // At house size the fences go too, and the walls of Pepper's own house, so nothing is left standing.
+    // Indoors, once Pepper is too big for the doorways, she chomps through the inside walls and the
+    // kitchen counter instead.
+    const fences = this.canEat(this.fenceBite), inner = this.r >= WALL_R;
+    if (fences || inner) {
+      const nw = this.level.walls.length;
       for (const f of this.fences) {
-        if (!f.eaten && segHit(this.x, this.y, f.seg).d < this.r + f.seg.t / 2 + 8) this.eatFence(f);
+        if (f.eaten || !(fences || f.seg.inner || f.i >= nw)) continue;
+        if (segHit(this.x, this.y, f.seg).d < this.r + f.seg.t / 2 + 8) this.eatFence(f);
       }
     }
   }
@@ -538,14 +556,14 @@ export class GameScene extends Phaser.Scene {
   /** Pepper's size when she can eat the smallest house still standing, with Big Jaws counted. */
   private houseEatR() {
     const left = this.houses.filter((h) => !h.eaten);
-    if (!left.length) return TOWN_R;
+    if (!left.length) return this.hoodEatR();
     return Math.min(...left.map((h) => h.bite)) / (EAT_RATIO + JAWS * this.n('jaws'));
   }
 
   /** Pepper's size when she can eat the smallest neighborhood still standing in town, with Big Jaws counted. */
   private hoodEatR() {
     const left = this.things.filter((t) => !t.eaten && HOODS.has(t.def.id));
-    if (!left.length) return COUNTRY_R;
+    if (!left.length) return this.townEatR();
     return Math.min(...left.map((t) => t.def.size)) / (EAT_RATIO + JAWS * this.n('jaws'));
   }
 
@@ -556,24 +574,33 @@ export class GameScene extends Phaser.Scene {
     return Math.min(...left.map((t) => t.def.size)) / (EAT_RATIO + JAWS * this.n('jaws'));
   }
 
-  /** Pepper has outgrown this map and can walk off its edge to the next one. */
-  private canLeave() {
-    return (this.stage === 1 && this.r >= TOWN_R) || (this.stage === 2 && this.r >= COUNTRY_R);
+  /** Is x,y inside Pepper's house? */
+  private inHouse(x: number, y: number) {
+    const b = this.houseBox;
+    return x > b.x && y > b.y && x < b.x + b.w && y < b.y + b.h;
   }
 
-  /** The edge of the map closest to Pepper: how far she is from it, and which way it is. */
-  private nearestEdge() {
-    const b = this.house.bounds, r = this.r;
-    const edges = [
-      { d: this.x - (b.x + r), a: Math.PI }, { d: b.x + b.w - r - this.x, a: 0 },
-      { d: this.y - (b.y + r), a: -Math.PI / 2 }, { d: b.y + b.h - r - this.y, a: Math.PI / 2 },
-    ];
-    return edges.sort((p, q) => p.d - q.d)[0];
+  /** The innermost part of the world at x,y. */
+  private regionAt(x: number, y: number) {
+    return this.regions.find((rg) => x >= rg.box.x && y >= rg.box.y && x <= rg.box.x + rg.box.w && y <= rg.box.y + rg.box.h) ?? this.regions[this.regions.length - 1];
   }
 
-  /** In water (the town's river or pond, off the bridges) a smaller Pepper has to paddle, at about half speed. */
+  /** The first time Pepper sets foot in a new part of the world, say what's to eat there. */
+  private greet() {
+    if (!this.outside) return;
+    const name = this.regionAt(this.x, this.y).name;
+    if (this.seen.has(name)) return;
+    this.seen.add(name);
+    if (name === 'town') {
+      this.game.events.emit(EV.toast, `Welcome to town! Buses, shops and churches are all food here. Whole neighborhoods are on the menu at ${formatSize(this.hoodEatR())}.`);
+    } else if (name === 'country') {
+      this.game.events.emit(EV.toast, `The countryside! Farms, forests and castles are all food out here. Whole towns are on the menu at ${formatSize(this.townEatR())}.`);
+    }
+  }
+
+  /** In water (a river, a lake or a pond, off the bridges) a smaller Pepper has to paddle, at about half speed. */
   private paddle() {
-    const { water, paths } = this.house;
+    const { water, paths } = this.level;
     if (!water || this.r >= STREET_R || !water.some((poly) => inPoly(this.x, this.y, poly))) return 1;
     const onBridge = paths?.some((p) => p.pts.some((q, i) => i > 0 && segHit(this.x, this.y, { a: p.pts[i - 1], b: q, t: 0 }).d < p.w / 2));
     return onBridge ? 1 : 0.5;
@@ -637,7 +664,7 @@ export class GameScene extends Phaser.Scene {
     const r = this.r;
     const snacks = ITEMS.filter((d) => !d.furniture && d.size >= r * 0.25 && d.size <= r * 0.9);
     const pool = snacks.length ? snacks : ITEMS.filter((d) => !d.furniture && d.size <= r).slice(-4);
-    const b = this.house.bounds, added: Thing[] = [];
+    const b = this.level.bounds, added: Thing[] = [];
     for (let i = 0; i < 18; i++) {
       const def = pool[Math.floor(Math.random() * pool.length)];
       const rad = (def.size / 2) * ((def.w + def.h) / 2) / Math.max(def.w, def.h);
@@ -697,7 +724,7 @@ export class GameScene extends Phaser.Scene {
     this.afterGrow(before);
   }
 
-  /** Phase 4: Pepper swallows a whole house, walls, roof and all. */
+  /** Pepper swallows a whole house, walls, roof and all. */
   private eatHouse(h: House) {
     h.eaten = true;
     this.housesEaten++;
@@ -726,15 +753,24 @@ export class GameScene extends Phaser.Scene {
     this.segs = this.segs.filter((sg) => sg !== f.seg);
     const before = this.r;
     const len = Math.hypot(f.seg.b[0] - f.seg.a[0], f.seg.b[1] - f.seg.a[1]);
-    // Fences are thin, so they count as a strip about a metre wide. Inside walls just count their footprint.
-    this.grow(GROW_K * (len * (this.outside ? 100 : f.seg.t)) / 4);
+    // Yard fences are thin, so they count as a strip about a metre wide. The house's walls just count their footprint.
+    const ofHouse = f.i < this.houseWallN || f.i >= this.level.walls.length;
+    this.grow(GROW_K * (len * (ofHouse ? f.seg.t : 100)) / 4);
 
     const mouthX = this.x + Math.cos(this.heading) * this.r * 1.6, mouthY = this.y + Math.sin(this.heading) * this.r * 1.6;
     this.world.eatWall(f.i, mouthX, mouthY, this.r * 1.2);
     const [sx, sy] = this.world.toScreen(mouthX, mouthY, this.r * 1.2), ppc = this.world.pxPerCm();
     this.crumbBurst(sx, sy, before * ppc);
-    const what = this.outside ? 'a fence' : f.i >= this.house.walls.length ? 'the kitchen counter' : 'a wall';
+    const what = !ofHouse ? 'a fence' : f.i >= this.level.walls.length ? 'the kitchen counter' : 'a wall';
     this.game.events.emit(EV.eat, what);
+    // Biting into the outside of Pepper's house takes the stairs and the dog door with it.
+    if (f.i < this.houseWallN && !f.seg.inner && !this.houseGone) {
+      this.houseGone = true;
+      if (this.level.stairs) this.solidGrid.remove(this.level.stairs);
+      if (this.doorFlap) this.solidGrid.remove(this.doorFlap);
+      this.world.eatHouseBits(mouthX, mouthY, this.r * 1.2);
+      this.game.events.emit(EV.toast, 'Pepper is eating her own house!');
+    }
     this.afterGrow(before);
   }
 
@@ -746,38 +782,23 @@ export class GameScene extends Phaser.Scene {
     } else if (!this.outside && before < WALL_R && this.r >= WALL_R) {
       this.game.events.emit(EV.toast, 'Too chunky for the doorways! Pepper can chomp right through the walls now.');
     }
-    if (this.stage === 1) {
-      const houseR = this.houseEatR();
-      if (this.catcherEaten && this.housesEaten === 0 && before < houseR && this.r >= houseR) {
-        this.game.events.emit(EV.toast, 'Pepper is big enough to eat houses, fences, everything! Go chomp.');
-      }
-      if (before < TOWN_R && this.r >= TOWN_R) {
-        this.game.events.emit(EV.toast, 'Pepper has outgrown the neighborhood! Waddle off any edge of the map to head into town.');
-      }
-      if (this.catcherEaten) this.emitGoal();
-    } else if (this.stage === 2) {
-      if (before < STREET_R && this.r >= STREET_R) {
-        this.game.events.emit(EV.toast, 'Too wide for the streets! Pepper can stomp right over anything she can\'t eat yet.');
-      }
-      const hoodR = this.hoodEatR();
-      if (this.hoodsEaten === 0 && before < hoodR && this.r >= hoodR) {
-        this.game.events.emit(EV.toast, 'Pepper can eat whole neighborhoods now! Find one with a hedge round it.');
-      }
-      if (before < COUNTRY_R && this.r >= COUNTRY_R) {
-        this.game.events.emit(EV.toast, 'Pepper has outgrown the town! Waddle off any edge of the map into the countryside.');
-      }
-      this.emitGoal();
-    } else if (this.stage === 3) {
-      if (before < COUNTRY_STEP_R && this.r >= COUNTRY_STEP_R) {
-        this.game.events.emit(EV.toast, 'Pepper is so big she can stride right over anything she can\'t eat yet.');
-      }
-      const townR = this.townEatR();
-      if (this.townsEaten === 0 && before < townR && this.r >= townR) {
-        this.game.events.emit(EV.toast, 'Pepper can eat whole towns now! Go find the biggest one.');
-      }
-      this.emitGoal();
-      if (this.r >= WIN_R) { this.endRun('won'); return; }
+    // Size goals, wherever Pepper is
+    const passed = (at: number) => before < at && this.r >= at;
+    const houseR = this.houseEatR(), hoodR = this.hoodEatR(), townR = this.townEatR();
+    if (this.outside && this.housesEaten === 0 && passed(houseR)) {
+      this.game.events.emit(EV.toast, 'Pepper is big enough to eat houses, fences, everything! Go chomp.');
     }
+    if (passed(STREET_R)) {
+      this.game.events.emit(EV.toast, 'Too wide for the streets! Pepper can stomp right over anything she can\'t eat yet.');
+    }
+    if (this.hoodsEaten === 0 && passed(hoodR)) {
+      this.game.events.emit(EV.toast, 'Pepper can eat whole neighborhoods now! There are some round the edge of town, each with a hedge round it.');
+    }
+    if (this.townsEaten === 0 && passed(townR)) {
+      this.game.events.emit(EV.toast, 'Pepper can eat whole towns now! Head out into the countryside and find the biggest one.');
+    }
+    if (this.outside) this.emitGoal();
+    if (this.r >= WIN_R) { this.endRun('won'); return; }
     if (this.n('streak') && this.streak >= 3 && this.streak % 3 === 0) {
       this.game.events.emit(EV.toast, `Munch streak ×${this.streak}!`);
     }
@@ -818,7 +839,7 @@ export class GameScene extends Phaser.Scene {
 
   private exitThroughDoor() {
     this.finished = true;
-    const door = this.house.door!;
+    const door = this.level.door!;
     this.vx = this.vy = 0;
     this.heading = 0;
     this.world.flapOpen();
@@ -828,49 +849,16 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  /** Phase 2: out the dog door and into the neighborhood. */
+  /** Out the dog door and into the neighborhood, which was right there all along. */
   private goOutside() {
-    this.stage = 1;
-    this.loadLevel(buildNeighborhood());
+    this.outside = true;
+    this.seen.add('hood');
     this.heading = 0;
     this.finished = false;
+    // The flap swings shut behind her: back in, she could grow too big to get out again.
+    this.world.setArrow('door', false);
     this.emitGoal();
     this.game.events.emit(EV.toast, `Pepper's out! The whole neighborhood is a buffet. Watch out for the dog catcher once you hit ${formatSize(CATCHER_R)}.`);
-  }
-
-  /** Phase 5: Pepper walks off the edge of the neighborhood and into town. */
-  private leaveMap(a: number) {
-    this.finished = true;
-    this.vx = this.vy = 0;
-    this.heading = a;
-    this.world.setArrow('door', false);
-    this.tweens.add({
-      targets: this, x: this.x + Math.cos(a) * this.r * 4, y: this.y + Math.sin(a) * this.r * 4, duration: 700, ease: 'Quad.easeIn',
-      onComplete: () => (this.stage === 1 ? this.goToTown() : this.goToCountry()),
-    });
-  }
-
-  private goToTown() {
-    this.stage = 2;
-    // The dog catcher stays behind if he was never eaten.
-    this.catcher = null;
-    this.world.catcher.show(false);
-    this.world.setArrow('catcher', false);
-    this.loadLevel(buildTown());
-    this.heading = 0;
-    this.finished = false;
-    this.emitGoal();
-    this.game.events.emit(EV.toast, `Welcome to town! Buses, shops and churches are all food now. Whole neighborhoods are on the menu at ${formatSize(this.hoodEatR())}.`);
-  }
-
-  /** Phase 6: out of town and into the countryside, where whole towns are food. */
-  private goToCountry() {
-    this.stage = 3;
-    this.loadLevel(buildCountry());
-    this.heading = 0;
-    this.finished = false;
-    this.emitGoal();
-    this.game.events.emit(EV.toast, `The countryside! Farms, forests and castles are all food now. Whole towns are on the menu at ${formatSize(this.townEatR())}.`);
   }
 
   private endRun(outcome: RunStats['outcome']) {
@@ -886,7 +874,7 @@ export class GameScene extends Phaser.Scene {
 
   /** He shows up at the street corner nearest a good distance away. */
   private spawnCatcher() {
-    const spots = this.house.catcherSpawns ?? [[this.house.bounds.x, this.house.bounds.y]];
+    const spots = this.level.catcherSpawns ?? [[this.level.bounds.x, this.level.bounds.y]];
     const far = (p: Pt) => Math.abs(Math.hypot(p[0] - this.x, p[1] - this.y) - 3200);
     const [x, y] = [...spots].sort((a, b) => far(a) - far(b))[0];
     this.catcher = {
@@ -899,9 +887,17 @@ export class GameScene extends Phaser.Scene {
   }
 
   private stepCatcher(dt: number) {
-    if (this.stage !== 1 || this.catcherEaten) return;
+    if (!this.outside || this.catcherEaten) return;
     if (!this.catcher) { if (this.r >= CATCHER_R) this.spawnCatcher(); return; }
     const c = this.catcher;
+    // Once Pepper is far too big to net, he gives up and goes home.
+    if (this.r >= TOWN_R && c.eatenT < 0) {
+      this.catcher = null; this.catcherEaten = true;
+      this.world.catcher.show(false); this.world.setArrow('catcher', false);
+      this.game.events.emit(EV.toast, 'The dog catcher gave up! Pepper is far too big for his net now.');
+      this.emitGoal();
+      return;
+    }
     const big = this.canEat(CATCHER_SIZE);
     if (big && !c.fleeing) {
       c.fleeing = true;
@@ -923,7 +919,7 @@ export class GameScene extends Phaser.Scene {
     c.vy += (Math.sin(ang) * speed - c.vy) * a;
     c.x += c.vx * dt; c.y += c.vy * dt;
     this.pushOut(c, CATCHER_RAD);
-    const b = this.house.bounds;
+    const b = this.level.bounds;
     c.x = Phaser.Math.Clamp(c.x, b.x + CATCHER_RAD, b.x + b.w - CATCHER_RAD);
     c.y = Phaser.Math.Clamp(c.y, b.y + CATCHER_RAD, b.y + b.h - CATCHER_RAD);
 
@@ -1046,14 +1042,8 @@ export class GameScene extends Phaser.Scene {
 
   /** Once Pepper is big enough, an arrow on the floor points her toward the dog door. */
   private drawDoorArrow() {
-    const { door } = this.house;
-    if (this.canLeave() && !this.finished) {
-      // Outgrown this map: point to the nearest edge.
-      const { a } = this.nearestEdge(), dist = this.shownR * 2.3;
-      this.world.setArrow('door', true, this.x + Math.cos(a) * dist, this.y + Math.sin(a) * dist, a, this.shownR * 0.45);
-      return;
-    }
-    if (!door || this.r < DOOR_R || this.finished || !this.started) { this.world.setArrow('door', false); return; }
+    const { door } = this.level;
+    if (!door || this.outside || this.r < DOOR_R || this.finished || !this.started) { this.world.setArrow('door', false); return; }
     const a = Math.atan2(door.y - this.y, door.x - this.x), dist = this.shownR * 2.3;
     this.world.setArrow('door', true, this.x + Math.cos(a) * dist, this.y + Math.sin(a) * dist, a, this.shownR * 0.45);
   }

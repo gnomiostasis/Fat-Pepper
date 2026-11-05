@@ -1,9 +1,9 @@
-// Phase 5 level: the market town around Pepper's neighborhood.
+// The market town around Pepper's neighborhood.
 // Laid out fresh each run like an old English town rather than a grid: a high street
 // curving across the map through the market square, a ring road round the middle, roads
 // winding out to the edges with lanes and cul-de-sacs off them, a river with bridges, a
 // railway with its station, a park with a pond, a fairground, woods, and whole
-// neighborhoods out on the edge of town. Pepper walks in from the west along the high street.
+// neighborhoods out on the edge of town. Pepper's own neighborhood sits on its west edge.
 
 import { PAL } from '../art/palette';
 import type { FurnitureSpot, Level, Pt } from './level';
@@ -93,18 +93,40 @@ export function ribbon(pts: Pt[], w: number): Pt[] {
   return [...left, ...right.reverse()];
 }
 
-export function buildTown(): Level {
-  // The middle of town, a little west of centre so the river runs through its east side.
-  const C: Pt = [W * rand(0.4, 0.46), H * rand(0.45, 0.55)];
+export interface Town {
+  level: Level;
+  /** Where Pepper's neighborhood goes: add this to the neighborhood's own coordinates. */
+  hoodAt: Pt;
+  /** Where the road through town leaves it, on its west and east edges. */
+  west: Pt;
+  east: Pt;
+}
+
+/** Cuts a road off where it first leaves the ground it's allowed on. */
+function clip(pts: Pt[], ok: (x: number, y: number) => boolean) {
+  const i = pts.findIndex(([x, y]) => !ok(x, y));
+  return i < 0 ? pts : pts.slice(0, i);
+}
+
+/**
+ * The town, with room on its west edge for Pepper's neighborhood (`hood`, its size and where its main road
+ * leaves it, in its own coordinates). The neighborhood's main road carries on east as the high street.
+ */
+export function buildTown(hood: { w: number; h: number; west: Pt; east: Pt }): Town {
+  // The middle of town, east of the neighborhood, with the river running down its east side.
+  const C: Pt = [W * rand(0.5, 0.55), H * rand(0.45, 0.55)];
   const R = 20000;
   const fromC = (x: number, y: number) => Math.hypot(x - C[0], y - C[1]);
+  const hoodAt: Pt = [0, H * rand(0.34, 0.44)];
+  const inHood = (x: number, y: number, pad: number) =>
+    x > hoodAt[0] - pad && y > hoodAt[1] - pad && x < hoodAt[0] + hood.w + pad && y < hoodAt[1] + hood.h + pad;
 
   // ---- roads ----
   const roads: Road[] = [];
-  const hy = C[1];
+  const E: Pt = [hoodAt[0] + hood.east[0], hoodAt[1] + hood.east[1]];
   roads.push({
     kind: 'high', w: 1800,
-    pts: smooth([[-1500, hy + rand(-6000, 6000)], [W * 0.18, hy + rand(-5000, 5000)], C, [W * 0.68, hy + rand(-6000, 6000)], [W + 1500, hy + rand(-8000, 8000)]], 1000),
+    pts: smooth([E, [E[0] + 7000, E[1] + rand(-1500, 1500)], [(E[0] + C[0]) / 2 + 3500, (E[1] + C[1]) / 2 + rand(-2000, 2000)], C, [W * 0.8, C[1] + rand(-6000, 6000)], [W, C[1] + rand(-8000, 8000)]], 1000),
   });
   const ringCtrl = Array.from({ length: 14 }, (_, i): Pt => {
     const a = (i / 14) * Math.PI * 2, r = R + rand(-2500, 2500);
@@ -116,7 +138,9 @@ export function buildTown(): Level {
     const a = base + rand(-0.2, 0.2);
     const start: Pt = [C[0] + Math.cos(a) * R, C[1] + Math.sin(a) * R];
     const far = 90000, end: Pt = [C[0] + Math.cos(a) * far, C[1] + Math.sin(a) * far];
-    roads.push({ kind: 'road', w: 1400, pts: smooth(wander(start, end, 5, 4000), 1000) });
+    // Stopping at the edge of town, and short of the neighborhood
+    const pts = clip(smooth(wander(start, end, 5, 4000), 1000), (x, y) => x >= 0 && y >= 0 && x <= W && y <= H && !inHood(x, y, 2500));
+    if (pts.length > 6) roads.push({ kind: 'road', w: 1400, pts });
   }
   // Side streets inside the ring road, out from the market square
   for (const base of [-Math.PI * 0.75, -Math.PI * 0.25, Math.PI * 0.25, Math.PI * 0.75, -Math.PI / 2, Math.PI / 2]) {
@@ -142,7 +166,7 @@ export function buildTown(): Level {
     const end: Pt = [p[0] + Math.cos(a) * len, p[1] + Math.sin(a) * len];
     const pts = smooth(wander(p, end, 2, 1500), 900);
     // Keep it clear of every other road, and of the one it starts from once it has left it
-    if (!pts.slice(2).every(([x, y]) => inMap(x, y, 3000) && roadDist(x, y, from) > 2600)) continue;
+    if (!pts.slice(2).every(([x, y]) => inMap(x, y, 3000) && !inHood(x, y, 3000) && roadDist(x, y, from) > 2600)) continue;
     if (!pts.slice(6).every(([x, y]) => nearLine(x, y, from.pts).d > 3000)) continue;
     roads.push({ kind: 'lane', w: 1000, pts });
     culs.push(end);
@@ -150,8 +174,8 @@ export function buildTown(): Level {
   }
 
   // ---- the river ----
-  const rx = W * rand(0.6, 0.7);
-  const river = smooth([[rx + rand(-4000, 4000), -3000], [rx + rand(-7000, 7000), H * 0.3], [rx + rand(-7000, 7000), H * 0.6], [rx + rand(-4000, 4000), H + 3000]], 1500);
+  const rx = W * rand(0.77, 0.83);
+  const river = smooth([[rx + rand(-4000, 4000), 0], [rx + rand(-6000, 6000), H * 0.3], [rx + rand(-6000, 6000), H * 0.6], [rx + rand(-4000, 4000), H]], 1500);
   const RIVER_W = 2600;
   const riverPoly = ribbon(river, RIVER_W);
   const wet = (x: number, y: number, pad: number) => nearLine(x, y, river).d < RIVER_W / 2 + pad;
@@ -163,7 +187,7 @@ export function buildTown(): Level {
   const rooms: Level['rooms'] = [];
   const plazas: Pt[][] = [], ponds: Pt[][] = [];
   const free = (x: number, y: number, rad: number, roadPad = 150) =>
-    inMap(x, y, rad + 300) && roadDist(x, y) > rad * 0.8 + roadPad && !wet(x, y, rad * 0.8 + 200)
+    inMap(x, y, rad + 300) && !inHood(x, y, rad + 800) && roadDist(x, y) > rad * 0.8 + roadPad && !wet(x, y, rad * 0.8 + 200)
     && placed.every((s) => Math.hypot(s.x - x, s.y - y) > s.rad * 0.85 + rad * 0.85 + 100);
   const size = (id: string) => ({ cottage: 850, cottage2: 850, cottage3: 850, shop: 1600, cafe: 1400, apartments: 2800, office: 2900, church: 2600, school: 3600, gasstation: 2200, watertower: 2400, playground: 1100, gazebo: 900, fountain: 700, tree: 450, hood: 5600, hoodrow: 5600, station: 1800, train: 1600, carousel: 1200, ferriswheel: 2400, bigtop: 2600, townhall: 3800, statue: 600 } as Record<string, number>)[id] ?? 1000;
   const put = (id: string, x: number, y: number, rot: number, rad = size(id) / 2, force = false) => {
@@ -214,7 +238,7 @@ export function buildTown(): Level {
   // The fairground, out past the ring road
   for (let tries = 0; tries < 60; tries++) {
     const a = rand(0, Math.PI * 2), d = rand(R + 9000, R + 20000), fx = C[0] + Math.cos(a) * d, fy = C[1] + Math.sin(a) * d;
-    if (!inMap(fx, fy, 8000) || roadDist(fx, fy) < 6500 || wet(fx, fy, 7000) || Math.abs(fy - railY) < 7500) continue;
+    if (!inMap(fx, fy, 8000) || inHood(fx, fy, 8000) || roadDist(fx, fy) < 6500 || wet(fx, fy, 7000) || Math.abs(fy - railY) < 7500) continue;
     plazas.push(disc(fx, fy, 5600, 24));
     put('ferriswheel', fx - 2400, fy - 2000, 0, 1500, true);
     put('bigtop', fx + 2400, fy - 1200, 0, 1400, true);
@@ -295,12 +319,11 @@ export function buildTown(): Level {
   }
   rooms.push({ box: { x: 0, y: 0, w: W, h: H }, extras: {} });
 
-  const entry = roads[0].pts.reduce((b, p) => (Math.abs(p[0] - 1500) < Math.abs(b[0] - 1500) ? p : b));
-  const spawn = { x: 1500, y: entry[1] };
+  const spawn = { x: E[0] + 1500, y: E[1] };
   const roadPolys = roads.flatMap((rd) => strip(rd.pts, rd.w, rd.kind === 'lane'));
   const walkPolys = roads.flatMap((rd) => strip(rd.pts, rd.w + WALK * 2, rd.kind === 'lane'));
 
-  return {
+  const level: Level = {
     bounds: { x: 0, y: 0, w: W, h: H },
     walls: [], wallStyle: { color: PAL.white, height: 75 }, counters: [], buildings: [],
     floors: [
@@ -321,5 +344,6 @@ export function buildTown(): Level {
       { id: 'trashcan', piles: 10, each: 6, spread: 900 },
       { id: 'bush', piles: 14, each: 6, spread: 1000 },
     ],
-  };
+  };  const hs = roads[0].pts;
+  return { level, hoodAt, west: [hoodAt[0] + hood.west[0], hoodAt[1] + hood.west[1]], east: hs[hs.length - 1] };
 }

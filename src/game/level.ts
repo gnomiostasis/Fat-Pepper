@@ -9,6 +9,9 @@ export interface Seg {
   a: Pt; b: Pt; t: number;
   /** An inside wall of Pepper's house, which she can chomp through once she's too big for the doorways. */
   inner?: boolean;
+  /** Its own look, where it differs from the level's wall style (the house's walls among the yard fences). */
+  color?: string;
+  h?: number;
 }
 
 /** Something placed by the layout. `rot` is in degrees, clockwise; the house and neighborhood stick to right angles. */
@@ -28,9 +31,10 @@ export interface Level {
   frontDoor?: Seg;
   stairs?: Box;
   buildings: Building[];
-  floors: { poly: Pt[]; texture: string }[];
+  /** `tile` scales one floor's pattern, where it differs from the level's (each part of the world has its own). */
+  floors: { poly: Pt[]; texture: string; tile?: number }[];
   /** Paint on the ground, like the dashes down the middle of a street. `rot` turns it about its centre, in degrees clockwise. */
-  marks: { box: Box; color: string; rot?: number }[];
+  marks: { box: Box; color: string; rot?: number; tile?: number }[];
   furniture: FurnitureSpot[];
   /** Flat things on the floor that Pepper walks over. */
   decals: FurnitureSpot[];
