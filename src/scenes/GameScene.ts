@@ -7,7 +7,7 @@ import type { Box, Level, Pt, Seg } from '../game/level';
 import { Tiers } from '../game/grid';
 import { Region, RegionName, World, buildWorld } from '../game/world';
 import {
-  APPETITE, JAWS, MILESTONES, POWER_BY_ID, PowerId, RUSH, RUSH_TIME, SNEAKY, STREAK, STREAK_CAP, STREAK_GAP,
+  APPETITE, JAWS, MILESTONES, POWER_BY_ID, PowerId, RUSH, RUSH_TIME, STREAK, STREAK_CAP, STREAK_GAP,
   Stacks, TONGUE, ZOOMIES, rollChoices,
 } from '../game/powerups';
 import {
@@ -157,9 +157,6 @@ export class GameScene extends Phaser.Scene {
   /** The game is paused while the player picks a powerup. */
   private picking = false;
   private pickStart = 0;
-  private furLeft = 0;
-  /** Seconds Pepper can't be netted, after Slippery Fur saves her. */
-  private safeT = 0;
   private streak = 0;
   private lastBite = -99;
   /** Sugar Rush boost left, in seconds. */
@@ -181,7 +178,7 @@ export class GameScene extends Phaser.Scene {
     this.houses = []; this.housesEaten = 0; this.hoodsEaten = 0; this.townsEaten = 0; this.citiesEaten = 0; this.islesEaten = 0; this.mainlandEaten = 0;
     // One free pick as soon as the run starts.
     this.stacks = {}; this.milestone = 0; this.pendingPicks = 1; this.picking = false;
-    this.furLeft = 0; this.safeT = 0; this.streak = 0; this.lastBite = -99; this.rushT = 0;
+    this.streak = 0; this.lastBite = -99; this.rushT = 0;
 
     // The level is drawn in 3D underneath; this scene keeps the rules and the comic pops.
     this.world = getWorld();
@@ -424,7 +421,6 @@ export class GameScene extends Phaser.Scene {
     if (len > 0) { dx /= len; dy /= len; }
 
     this.rushT = Math.max(0, this.rushT - dt);
-    this.safeT = Math.max(0, this.safeT - dt);
     const speed = this.topSpeed() * ease * this.paddle(), a = 1 - Math.exp(-dt * 22);
     this.vx += (dx * speed - this.vx) * a;
     this.vy += (dy * speed - this.vy) * a;
@@ -692,7 +688,6 @@ export class GameScene extends Phaser.Scene {
     // The pause doesn't count toward the run's time.
     this.startTime += this.time.now - this.pickStart;
     this.stacks[id] = this.n(id) + 1;
-    if (id === 'fur') this.furLeft++;
     if (id === 'treats') this.treatRain();
     this.game.events.emit(EV.toast, `${POWER_BY_ID[id].name}!`);
     this.emitPowers();
@@ -700,7 +695,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private emitPowers() {
-    const s: PowerState = { stacks: { ...this.stacks }, next: MILESTONES[this.milestone] ?? null, fur: this.furLeft };
+    const s: PowerState = { stacks: { ...this.stacks }, next: MILESTONES[this.milestone] ?? null };
     this.game.events.emit(EV.powers, s);
   }
 
@@ -982,7 +977,7 @@ export class GameScene extends Phaser.Scene {
     if (c.detour > 0) { c.detour -= dt; ang += c.detourAng; }
 
     // He keeps up with a growing Pepper, and lunges with the net when he's close.
-    let speed = c.fleeing ? 0.72 * speedFor(this.r) : Math.max(CATCHER_SPEED, 0.8 * speedFor(this.r)) * (1 - SNEAKY * this.n('sneaky'));
+    let speed = c.fleeing ? 0.72 * speedFor(this.r) : Math.max(CATCHER_SPEED, 0.8 * speedFor(this.r));
     if (c.stun > 0) { c.stun -= dt; speed = 0; }
     c.cool -= dt;
     if (!c.fleeing && c.lunge <= 0 && c.cool <= 0 && d < this.r + CATCHER_RAD + 260) { c.lunge = 0.55; c.cool = 2.6; }
@@ -1009,21 +1004,8 @@ export class GameScene extends Phaser.Scene {
     c.gait += (v / 45) * dt;
 
     if (d < this.r + CATCHER_RAD + (c.lunge > 0 ? 30 : 5)) {
-      if (big) this.eatCatcher(); else if (this.furLeft > 0) this.slipNet(); else if (this.safeT <= 0) this.getCaught();
+      if (big) this.eatCatcher(); else this.getCaught();
     }
-  }
-
-  /** Slippery Fur: the net slides off, Pepper gets a moment to run, and he's left dazed. */
-  private slipNet() {
-    if (this.safeT > 0) return;
-    const c = this.catcher!;
-    this.furLeft--;
-    this.safeT = 2;
-    c.stun = 1.4; c.lunge = 0; c.cool = 3; c.swing = 1;
-    this.emitPowers();
-    this.game.events.emit(EV.toast, this.furLeft
-      ? `The net slipped off! Slippery Fur can save Pepper ${this.furLeft} more time${this.furLeft > 1 ? 's' : ''}.`
-      : 'The net slipped off! That was the last of the Slippery Fur. Run!');
   }
 
   private getCaught() {
