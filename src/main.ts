@@ -3,6 +3,7 @@ import { BootScene } from './scenes/BootScene';
 import { GameScene } from './scenes/GameScene';
 import { UIScene } from './scenes/UIScene';
 import { getWorld } from './world3d/World3D';
+import { loadingStep } from './loading';
 
 document.getElementById('build')!.textContent = __BUILD_VERSION__;
 
@@ -12,19 +13,22 @@ async function fontsReady() {
   await Promise.race([load, new Promise((r) => setTimeout(r, 3000))]);
 }
 
-fontsReady().then(() => {
-  // The house is drawn in 3D on its own canvas; Phaser runs the game and draws the HUD on top.
-  const world = getWorld(document.getElementById('world')!);
-  const game = new Phaser.Game({
-    type: Phaser.AUTO,
-    parent: 'game',
-    transparent: true,
-    scale: { mode: Phaser.Scale.RESIZE, width: window.innerWidth, height: window.innerHeight },
-    render: { antialias: true, roundPixels: false },
-    input: { activePointers: 2 },
-    scene: [BootScene, GameScene, UIScene],
-  });
+loadingStep(50, 'Sniffing out the fonts…')
+  .then(fontsReady)
+  .then(() => loadingStep(60, 'Setting up the camera…'))
+  .then(() => {
+    // The house is drawn in 3D on its own canvas; Phaser runs the game and draws the HUD on top.
+    const world = getWorld(document.getElementById('world')!);
+    const game = new Phaser.Game({
+      type: Phaser.AUTO,
+      parent: 'game',
+      transparent: true,
+      scale: { mode: Phaser.Scale.RESIZE, width: window.innerWidth, height: window.innerHeight },
+      render: { antialias: true, roundPixels: false },
+      input: { activePointers: 2 },
+      scene: [BootScene, GameScene, UIScene],
+    });
 
-  // Handy for poking at the game from the browser console while developing.
-  if (import.meta.env.DEV) Object.assign(window, { game, world });
-});
+    // Handy for poking at the game from the browser console while developing.
+    if (import.meta.env.DEV) Object.assign(window, { game, world });
+  });
