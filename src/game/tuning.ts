@@ -49,21 +49,14 @@ export const CATCHER_SPEED = 330;
 /** His collision radius in cm. */
 export const CATCHER_RAD = 35;
 
-/** Phase 4: a house counts as this much of its longest side when deciding if Pepper can eat it, so smaller houses go first. */
+/** A house counts as this much of its longest side when deciding if Pepper can eat it, so smaller houses go first. */
 export const HOUSE_BITE = 0.55;
-/** Pepper's size when she has outgrown the neighborhood and can waddle off to town. */
+/** Pepper's size when the dog catcher gives up: she's far too big for his net. */
 export const TOWN_R = 700;
 /**
- * In town, Pepper's size when she's too wide for the streets (24 m across, sidewalks included). From then on
- * she steps over anything she can't eat yet, so a neighborhood or office tower can never box her in.
+ * Pepper's size when she's too wide for the town's streets (24 m across, sidewalks included). From then on
+ * she steps over anything she can't eat yet, anywhere, so nothing in the world can ever box her in.
  */
 export const STREET_R = 1100;
-/** Pepper's size when she has outgrown the town and can waddle off into the countryside. */
-export const COUNTRY_R = 7000;
-/**
- * In the countryside, Pepper's size when she steps over anything she can't eat yet. Villages and towns are
- * placed at least her width apart until then, so they can't box her in.
- */
-export const COUNTRY_STEP_R = 15000;
-/** Phase 6: Pepper's size when she has eaten enough of the countryside to win the run. */
+/** Pepper's size when she has eaten enough of the countryside to win the run. */
 export const WIN_R = 40000;

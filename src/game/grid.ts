@@ -63,3 +63,47 @@ export class Grid<T> {
     return this.query(x - r, y - r, x + r, y + r);
   }
 }
+
+/**
+ * Spatial hashes stacked by size, for a world that holds crumbs and whole towns. Each thing goes in the
+ * finest grid whose cells are at least twice its size, so a crumb shares its cell with a few other
+ * crumbs, not with a whole house's worth. A search over a wide area skips the grids whose things are
+ * far too small to matter at that size (a crumb, to a Pepper the size of a church).
+ */
+export class Tiers<T> {
+  private grids: Grid<T>[];
+  private tier = new Map<T, number>();
+
+  constructor(private cells: number[]) {
+    this.grids = cells.map((c) => new Grid<T>(c));
+  }
+
+  insert(t: T, x0: number, y0: number, x1: number, y1: number) {
+    const size = Math.max(x1 - x0, y1 - y0);
+    let i = this.cells.findIndex((c) => size * 2 <= c);
+    if (i < 0) i = this.cells.length - 1;
+    this.grids[i].insert(t, x0, y0, x1, y1);
+    this.tier.set(t, i);
+  }
+
+  insertBox(t: T, b: Box) {
+    this.insert(t, b.x, b.y, b.x + b.w, b.y + b.h);
+  }
+
+  remove(t: T) {
+    const i = this.tier.get(t);
+    if (i === undefined) return;
+    this.grids[i].remove(t);
+    this.tier.delete(t);
+  }
+
+  /** Everything that might be within `r` of x,y, leaving out things under about a thirtieth of `r`. */
+  near(x: number, y: number, r: number): T[] {
+    const out: T[] = [];
+    this.grids.forEach((g, i) => {
+      if (i < this.grids.length - 1 && r > this.cells[i] * 15) return;
+      for (const t of g.near(x, y, r)) out.push(t);
+    });
+    return out;
+  }
+}

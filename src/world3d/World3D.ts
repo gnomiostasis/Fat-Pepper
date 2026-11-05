@@ -52,15 +52,12 @@ export class World3D {
   private root = new THREE.Group();
   private models = new Map<string, ReturnType<ModelBuilder['build']>>();
   private kinds: Kind[] = [];
-  /**
-   * Things are drawn in square chunks of the map, one instanced mesh per kind per chunk, so on a big
-   * map (the town) only the chunks near the camera get drawn. 0 means one chunk for the whole level.
-   */
-  private chunk = 0;
   private sph = new THREE.Sphere();
   private anims: Anim[] = [];
   private wobbles = new Map<Placed, number>();
   private flap = new THREE.Group();
+  /** The bits of Pepper's house that aren't walls (the stairs, the welcome mat, the dog door's flap), gulped along with its walls. */
+  private houseBits: THREE.Object3D[] = [];
   /** One group per building in the level, in the level's order. */
   private buildings: THREE.Group[] = [];
   /** Walls Pepper can eat, one group each, indexed like [...level.walls, ...level.counters]; a gap for one that stays put. */
@@ -153,34 +150,35 @@ export class World3D {
       return t;
     };
 
-    // Big levels get split into chunks that are drawn only when they're on screen.
     const b = house.bounds, span = Math.max(b.w, b.h);
-    this.chunk = span > 60000 ? span / 4 : 0;
     const tile = house.tile ?? 1;
 
-    // Grass all around, reaching past the edges however far back the camera gets
+    // Grass all around, reaching past the edges however far back the camera gets. It's drawn at the same
+    // scale everywhere, so there's no seam where one part of the world meets the next.
     const pad = Math.max(6000, span);
     const grassTex = tex('floor-grass');
-    grassTex.repeat.set((b.w + pad) / (FLOOR_TILE_WORLD * tile), (b.h + pad) / (FLOOR_TILE_WORLD * tile));
+    grassTex.repeat.set((b.w + pad) / FLOOR_TILE_WORLD, (b.h + pad) / FLOOR_TILE_WORLD);
     const grass = new THREE.Mesh(new THREE.PlaneGeometry(b.w + pad, b.h + pad).rotateX(-Math.PI / 2), paint({ map: grassTex }));
     grass.position.set(b.x + b.w / 2, -1, b.y + b.h / 2);
     grass.receiveShadow = true;
     this.root.add(grass);
 
     // Floors, each clipped to its room. A run of floors with the same pattern is merged into one mesh,
-    // so a town of hundreds of road pieces is still only a handful of meshes. Later floors sit on top.
-    let layer = 0;
+    // so a town of hundreds of road pieces is still only a handful of meshes. Later floors sit on top,
+    // stacked separately for each part of the world, a little apart at that part's scale.
+    const layers = new Map<number | undefined, number>();
     for (let i = 0; i < house.floors.length;) {
-      const key = house.floors[i].texture, geos: THREE.BufferGeometry[] = [];
-      for (; i < house.floors.length && house.floors[i].texture === key; i++) {
+      const key = house.floors[i].texture, ft = house.floors[i].tile, geos: THREE.BufferGeometry[] = [];
+      for (; i < house.floors.length && house.floors[i].texture === key && house.floors[i].tile === ft; i++) {
         geos.push(new THREE.ShapeGeometry(new THREE.Shape(house.floors[i].poly.map(([x, y]) => new THREE.Vector2(x, -y)))));
       }
       const geo = (geos.length > 1 ? mergeGeometries(geos)! : geos[0]).rotateX(-Math.PI / 2);
       if (geos.length > 1) for (const g of geos) g.dispose();
-      const t = tex(key);
-      t.repeat.set(1 / (FLOOR_TILE_WORLD * tile), 1 / (FLOOR_TILE_WORLD * tile));
+      const t = tex(key), sc = ft ?? tile, layer = layers.get(ft) ?? 0;
+      t.repeat.set(1 / (FLOOR_TILE_WORLD * sc), 1 / (FLOOR_TILE_WORLD * sc));
       const mesh = new THREE.Mesh(geo, paint({ map: t }));
-      mesh.position.y = layer++ * 0.25 * tile;
+      mesh.position.y = layer * 0.25 * sc;
+      layers.set(ft, layer + 1);
       mesh.receiveShadow = true;
       this.root.add(mesh);
     }
@@ -207,8 +205,8 @@ export class World3D {
     };
     const outdoors = house.buildings.length > 0;
     house.walls.forEach((sg, i) => {
-      if (outdoors || sg.inner) own(i, sg, (mb, ox, oz) => slab(mb, sg, sg.t, 0, WALL_H, house.wallStyle.color, true, ox, oz));
-      else slab(walls, sg, sg.t, 0, WALL_H, house.wallStyle.color);
+      if (outdoors || sg.inner) own(i, sg, (mb, ox, oz) => slab(mb, sg, sg.t, 0, sg.h ?? WALL_H, sg.color ?? house.wallStyle.color, true, ox, oz));
+      else slab(walls, sg, sg.t, 0, sg.h ?? WALL_H, sg.color ?? house.wallStyle.color);
     });
     // The counter bends, so its pieces meet at round posts instead of overlapping
     if (house.counters.length) {
@@ -227,18 +225,25 @@ export class World3D {
       slab(walls, fd, fd.t - 4, 0, WALL_H - 2, PAL.wood, false);
       walls.ball(fd.a[0] + (fd.b[0] - fd.a[0]) * 0.8, WALL_H * 0.45, fd.a[1] + fd.t / 2, 2.6, PAL.mustard);
     }
+    this.houseBits = [];
     const st = house.stairs;
     if (st) {
-      const steps = 9, dz = st.h / steps;
+      const steps = 9, dz = st.h / steps, mb = new ModelBuilder(), cx = st.x + st.w / 2, cz = st.y + st.h / 2;
       for (let i = 0; i < steps; i++) {
-        walls.box(st.x + st.w / 2, st.y + st.h - (i + 0.5) * dz, st.w, dz, 0, 6 + i * 4.5, i % 2 ? PAL.wood : PAL.woodLight);
+        mb.box(0, st.h / 2 - (i + 0.5) * dz, st.w, dz, 0, 6 + i * 4.5, i % 2 ? PAL.wood : PAL.woodLight);
       }
+      const g = new THREE.Group();
+      g.add(inkedMesh(mb.build()));
+      g.position.set(cx, 0, cz);
+      this.root.add(g);
+      this.houseBits.push(g);
     }
-    // Paint on the ground
-    // Paint sits just above the top floor, so it shows over the roads.
-    const paintH = 0.6 + Math.max(0, layer - 1) * 0.25 * tile;
-    for (const m of house.marks) walls.box(m.box.x + m.box.w / 2, m.box.y + m.box.h / 2, m.box.w, m.box.h, 0, paintH, m.color, { ink: false, ry: -(m.rot ?? 0) * Math.PI / 180 });
-    if (house.walls.some((sg) => !outdoors && !sg.inner) || fd || st || house.marks.length) this.root.add(inkedMesh(walls.build()));
+    // Paint sits just above the top floor of its part of the world, so it shows over the roads.
+    for (const m of house.marks) {
+      const sc = m.tile ?? tile, paintH = 0.6 + Math.max(0, (layers.get(m.tile) ?? 1) - 1) * 0.25 * sc;
+      walls.box(m.box.x + m.box.w / 2, m.box.y + m.box.h / 2, m.box.w, m.box.h, 0, paintH, m.color, { ink: false, ry: -(m.rot ?? 0) * Math.PI / 180 });
+    }
+    if (house.walls.some((sg) => !outdoors && !sg.inner) || fd || house.marks.length) this.root.add(inkedMesh(walls.build()));
 
     // Buildings: solid walls with a roof slab on top. Each is its own mesh, centred on
     // its footprint, so Pepper can eat them one at a time once she's big enough.
@@ -278,6 +283,7 @@ export class World3D {
     mat.position.set(door.x - 27, 0.8, door.y);
     mat.receiveShadow = true;
     this.root.add(mat);
+    this.houseBits.push(mat, this.flap);
     const panel = new ModelBuilder()
       .box(0, 0, T - 6, door.half * 2, -WALL_H, WALL_H, PAL.mustard)
       .ball(-(T - 6) / 2, -WALL_H * 0.75, 0, 3, PAL.mustardDark, { ink: false });
@@ -313,12 +319,16 @@ export class World3D {
     return m;
   }
 
-  /** Adds every item and piece of furniture, one instanced mesh per kind of thing (and per chunk of a big map). */
+  /**
+   * Adds every item and piece of furniture: one instanced mesh per kind of thing per chunk of the map, the
+   * chunks sized to the things in them, so only the chunks on screen get drawn. A crumb's chunk is a few
+   * metres across and a town's covers half the countryside.
+   */
   addThings(things: Placed[]) {
     const byId = new Map<string, Placed[]>();
-    const C = this.chunk;
     for (const t of things) {
-      const key = C ? `${t.def.id}:${Math.floor(t.x / C)}:${Math.floor(t.y / C)}` : t.def.id;
+      const C = chunkFor(t.def);
+      const key = `${t.def.id}:${Math.floor(t.x / C)}:${Math.floor(t.y / C)}`;
       let list = byId.get(key);
       if (!list) { list = []; byId.set(key, list); }
       list.push(t);
@@ -330,13 +340,9 @@ export class World3D {
       const line = built.line ? new THREE.InstancedMesh(built.line, ink(built.size), list.length) : null;
       const kind: Kind = { def, built, fill, line };
       list.forEach((t, i) => { t.slot = { kind, i }; this.place(t); });
-      // Chunked meshes are skipped while they're off screen; a single mesh for the whole level is always drawn.
-      fill.frustumCulled = !!C;
-      if (line) line.frustumCulled = !!C;
-      if (C) {
-        fill.computeBoundingSphere();
-        if (line) line.boundingSphere = fill.boundingSphere!.clone();
-      }
+      // Each chunk is skipped while it's off screen.
+      fill.computeBoundingSphere();
+      if (line) line.boundingSphere = fill.boundingSphere!.clone();
       this.root.add(fill);
       if (line) this.root.add(line);
       this.kinds.push(kind);
@@ -383,7 +389,13 @@ export class World3D {
     this.slurp(this.walls[i], mouthX, mouthY, mouthH);
   }
 
-  private slurp(g: THREE.Group | undefined, mouthX: number, mouthY: number, mouthH: number) {
+  /** Pepper ate her own house: the stairs, the welcome mat and the dog door's flap go too. */
+  eatHouseBits(mouthX: number, mouthY: number, mouthH: number) {
+    for (const g of this.houseBits) this.slurp(g, mouthX, mouthY, mouthH);
+    this.houseBits = [];
+  }
+
+  private slurp(g: THREE.Object3D | undefined, mouthX: number, mouthY: number, mouthH: number) {
     if (!g) return;
     const from = g.position.clone(), to = new THREE.Vector3(mouthX, mouthH, mouthY);
     const side = Math.random() < 0.5 ? -1 : 1;
@@ -456,7 +468,7 @@ export class World3D {
     const visH = aspect >= 1 ? this.view : this.view / aspect;
     const D = visH / (2 * Math.tan((FOV * Math.PI) / 360));
     this.camera.position.set(this.camX, D * Math.sin(TILT), this.camY + D * Math.cos(TILT));
-    this.camera.near = D * 0.1; this.camera.far = D * 6;
+    this.camera.near = D * 0.1; this.camera.far = D * 3;
     this.camera.updateProjectionMatrix();
     this.camera.lookAt(this.camX, 0, this.camY);
 
@@ -512,13 +524,18 @@ export class World3D {
     // Things too small to see from this far back (a crumb when Pepper is the size of a house) aren't drawn.
     const px = this.pxPerCm();
     for (const k of this.kinds) {
-      const show = k.def.size * px > 0.6;
+      const show = k.def.size * px > 1.5;
       k.fill.visible = show;
       if (k.line) k.line.visible = show;
     }
     this.placeCamera();
     this.renderer.render(this.scene, this.camera);
   }
+}
+
+/** How big a chunk of the map things of this kind are drawn in. */
+function chunkFor(def: ItemDef) {
+  return Math.min(60000, Math.max(1500, def.size * 30));
 }
 
 let world: World3D | null = null;
