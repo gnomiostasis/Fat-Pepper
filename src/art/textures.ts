@@ -138,6 +138,34 @@ function floorTextures(add: (key: string, c: HTMLCanvasElement) => void) {
     add('floor-water', c);
   }
 
+  // The open sea, a deeper blue than the rivers, with little whitecaps
+  {
+    const { c, ctx } = canvas(N, N), r = rng(43);
+    ctx.fillStyle = '#86b9d6'; ctx.fillRect(0, 0, N, N);
+    ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+    for (let i = 0; i < 7; i++) {
+      const x = r() * N, y = r() * N, w = 14 + r() * 20;
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.quadraticCurveTo(x + w / 2, y - 5, x + w, y); ctx.stroke();
+    }
+    add('floor-sea', c);
+  }
+
+  // Beach: pale sand with darker grains
+  {
+    const { c, ctx } = canvas(N, N), r = rng(47);
+    ctx.fillStyle = '#f1e2b8'; ctx.fillRect(0, 0, N, N);
+    for (let i = 0; i < 500; i++) { ctx.fillStyle = r() > 0.5 ? 'rgba(160,120,70,0.14)' : 'rgba(255,255,255,0.3)'; ctx.fillRect(r() * N, r() * N, 2, 2); }
+    add('floor-sand', c);
+  }
+
+  // Moorland up in the mountains: heather and rock
+  {
+    const { c, ctx } = canvas(N, N), r = rng(53);
+    ctx.fillStyle = '#b7c99a'; ctx.fillRect(0, 0, N, N);
+    for (let i = 0; i < 10; i++) { ctx.fillStyle = r() > 0.5 ? 'rgba(185,163,220,0.35)' : 'rgba(150,140,130,0.25)'; ctx.beginPath(); ctx.ellipse(r() * N, r() * N, 14 + r() * 26, 8 + r() * 14, r() * 3, 0, Math.PI * 2); ctx.fill(); }
+    add('floor-moor', c);
+  }
+
   // Fields seen from very high up: crop rows in three colours
   for (const [key, base, row] of [['floor-crops', '#b9da8f', '#9cc777'], ['floor-wheat', '#f1d98c', '#e2c36d'], ['floor-plough', '#d8b48a', '#c39a6f']] as const) {
     const { c, ctx } = canvas(N, N);
