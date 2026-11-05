@@ -58,5 +58,7 @@ export const TOWN_R = 700;
  * she steps over anything she can't eat yet, anywhere, so nothing in the world can ever box her in.
  */
 export const STREET_R = 1100;
-/** Pepper's size when she has eaten enough of the countryside to win the run. */
-export const WIN_R = 40000;
+/** Pepper's size when she has outgrown the countryside, and the island is where the food is. */
+export const ISLAND_R = 40000;
+/** Pepper's size when she has eaten enough of the island to win the run (6.4 km across). */
+export const WIN_R = 320000;

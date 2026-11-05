@@ -16,6 +16,11 @@ export interface Country {
   level: Level;
   /** Where Pepper's town goes: add this to the town's own coordinates. */
   townAt: Pt;
+  /** Where the motorway leaves the countryside, west and east, so the island's roads can carry it on. */
+  west: Pt;
+  east: Pt;
+  /** The rivers, top to bottom, so the island can carry them on down to the sea. */
+  rivers: Pt[][];
 }
 
 /**
@@ -93,8 +98,9 @@ export function buildCountry(town: { w: number; h: number; west: Pt; east: Pt })
     if (j <= 0) { roads.push({ w, pts }); return; }
     roads.push({ w, pts: fromEnd.slice(0, j + 1) }, { w: 4500, pts: fromEnd.slice(j) });
   };
-  joinTown(leadIn([-10000, tw[1] + rand(-60000, 60000)], [tw[0], tw[1]], 1), tw, 900);
-  joinTown(leadIn([te[0], te[1]], [W + 10000, te[1] + rand(-60000, 60000)], -1), te, 1800);
+  const west: Pt = [-10000, tw[1] + rand(-60000, 60000)], east: Pt = [W + 10000, te[1] + rand(-60000, 60000)];
+  joinTown(leadIn(west, [tw[0], tw[1]], 1), tw, 900);
+  joinTown(leadIn([te[0], te[1]], east, -1), te, 1800);
   for (const t of towns) {
     const others = towns.filter((o) => o !== t).sort((a, b) => Math.hypot(a[0] - t[0], a[1] - t[1]) - Math.hypot(b[0] - t[0], b[1] - t[1]));
     for (const o of others.slice(0, 2)) {
@@ -155,5 +161,6 @@ export function buildCountry(town: { w: number; h: number; west: Pt; east: Pt })
       { id: 'barn', piles: 14, each: 5, spread: 7000 },
       { id: 'silo', piles: 10, each: 5, spread: 6000 },
     ],
-  };  return { level, townAt };
+    };
+  return { level, townAt, west, east, rivers };
 }

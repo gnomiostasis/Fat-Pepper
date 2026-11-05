@@ -11,7 +11,7 @@ import {
   Stacks, TONGUE, ZOOMIES, rollChoices,
 } from '../game/powerups';
 import {
-  CATCHER_R, CATCHER_RAD, CATCHER_SIZE, CATCHER_SPEED, DOOR_R, EAT_RATIO, GROW_K, HOUSE_BITE, START_R, STREET_R, TOWN_R, WALL_R, WIN_R,
+  CATCHER_R, CATCHER_RAD, CATCHER_SIZE, CATCHER_SPEED, DOOR_R, EAT_RATIO, GROW_K, HOUSE_BITE, ISLAND_R, START_R, STREET_R, TOWN_R, WALL_R, WIN_R,
   canHop, fatFor, formatSize, grownRadius, OUTDOOR_ZOOM, speedFor, viewFor,
 } from '../game/tuning';
 import { ITEMS } from '../art/items';
@@ -45,6 +45,8 @@ interface House {
 const HOODS = new Set(['hood', 'hoodrow']);
 /** Things in the countryside that count as a whole town. */
 const TOWNS = new Set(['smalltown', 'bigtown']);
+/** Things on the island that count as a whole city. */
+const CITIES = new Set(['city', 'capital']);
 
 /** The dog catcher, once he's on Pepper's trail. */
 interface Catcher {
@@ -106,6 +108,7 @@ export class GameScene extends Phaser.Scene {
   private housesEaten = 0;
   private hoodsEaten = 0;
   private townsEaten = 0;
+  private citiesEaten = 0;
   /** Building edges, solid like walls but drawn as part of the building. */
   private buildingPolys: Pt[][] = [];
   private things: Thing[] = [];
@@ -171,7 +174,7 @@ export class GameScene extends Phaser.Scene {
     this.started = false; this.finished = false; this.eatenCount = 0; this.tooSmallUntil = 0;
     this.outside = false; this.seen = new Set(['house']); this.houseGone = false;
     this.catcher = null; this.catcherEaten = false; this.zoom = 1;
-    this.houses = []; this.housesEaten = 0; this.hoodsEaten = 0; this.townsEaten = 0;
+    this.houses = []; this.housesEaten = 0; this.hoodsEaten = 0; this.townsEaten = 0; this.citiesEaten = 0;
     // One free pick as soon as the run starts.
     this.stacks = {}; this.milestone = 0; this.pendingPicks = 1; this.picking = false;
     this.furLeft = 0; this.safeT = 0; this.streak = 0; this.lastBite = -99; this.rushT = 0;
@@ -251,14 +254,16 @@ export class GameScene extends Phaser.Scene {
   /** Tells the HUD what Pepper is growing toward right now. */
   private emitGoal() {
     let goal: Goal;
-    const houseR = this.houseEatR(), hoodR = this.hoodEatR(), townR = this.townEatR();
+    const houseR = this.houseEatR(), hoodR = this.hoodEatR(), townR = this.townEatR(), cityR = this.cityEatR();
     if (!this.outside) goal = { from: START_R, to: DOOR_R, label: 'Dog door at', reached: 'Dog door: OPEN!' };
     else if (!this.catcher && !this.catcherEaten) goal = { from: DOOR_R, to: CATCHER_R, label: 'Dog catcher alert at', reached: 'The dog catcher is coming!' };
     else if (!this.catcherEaten) goal = { from: CATCHER_R, to: this.catcherEatR(), label: 'Eat the catcher at', reached: 'Eat the dog catcher!' };
     else if (this.r < houseR && this.housesEaten === 0) goal = { from: this.catcherEatR(), to: houseR, label: 'Eat houses at', reached: 'Houses are on the menu!' };
     else if (this.r < hoodR && this.hoodsEaten === 0) goal = { from: Math.min(houseR, this.r), to: hoodR, label: 'Eat neighborhoods at', reached: 'Neighborhoods are on the menu!' };
     else if (this.r < townR && this.townsEaten === 0) goal = { from: Math.min(hoodR, this.r), to: townR, label: 'Eat towns at', reached: 'Whole towns are on the menu!' };
-    else goal = { from: Math.min(townR, this.r), to: WIN_R, label: 'Eat the countryside at', reached: 'Pepper ate the countryside!' };
+    else if (this.r < ISLAND_R) goal = { from: Math.min(townR, this.r), to: ISLAND_R, label: 'Outgrow the countryside at', reached: 'Off to the island!' };
+    else if (this.r < cityR && this.citiesEaten === 0) goal = { from: ISLAND_R, to: cityR, label: 'Eat cities at', reached: 'Whole cities are on the menu!' };
+    else goal = { from: Math.min(Math.max(cityR, ISLAND_R), this.r), to: WIN_R, label: 'Eat the island at', reached: 'Pepper ate the island!' };
     this.game.events.emit(EV.goal, goal);
   }
 
@@ -450,11 +455,12 @@ export class GameScene extends Phaser.Scene {
       const id = this.boxOwner.get(b)?.def.id ?? '';
       if (overAll) {
         // Striding over a whole neighborhood or town: say when she'll be able to eat one.
-        if (time > this.tooSmallUntil && (HOODS.has(id) || TOWNS.has(id))) {
+        if (time > this.tooSmallUntil && (HOODS.has(id) || TOWNS.has(id) || CITIES.has(id))) {
           this.tooSmallUntil = time + 6000;
           this.game.events.emit(EV.toast, HOODS.has(id)
             ? `Pepper can gulp a whole neighborhood at ${formatSize(this.hoodEatR())}.`
-            : `Pepper can gulp a whole town at ${formatSize(this.townEatR())}.`);
+            : TOWNS.has(id) ? `Pepper can gulp a whole town at ${formatSize(this.townEatR())}.`
+              : `Pepper can gulp a whole city at ${formatSize(this.cityEatR())}.`);
         }
         continue;
       }
@@ -570,6 +576,13 @@ export class GameScene extends Phaser.Scene {
   /** Pepper's size when she can eat the smallest town still standing in the countryside, with Big Jaws counted. */
   private townEatR() {
     const left = this.things.filter((t) => !t.eaten && TOWNS.has(t.def.id));
+    if (!left.length) return this.cityEatR();
+    return Math.min(...left.map((t) => t.def.size)) / (EAT_RATIO + JAWS * this.n('jaws'));
+  }
+
+  /** Pepper's size when she can eat the smallest city still standing on the island, with Big Jaws counted. */
+  private cityEatR() {
+    const left = this.things.filter((t) => !t.eaten && CITIES.has(t.def.id));
     if (!left.length) return WIN_R;
     return Math.min(...left.map((t) => t.def.size)) / (EAT_RATIO + JAWS * this.n('jaws'));
   }
@@ -595,6 +608,8 @@ export class GameScene extends Phaser.Scene {
       this.game.events.emit(EV.toast, `Welcome to town! Buses, shops and churches are all food here. Whole neighborhoods are on the menu at ${formatSize(this.hoodEatR())}.`);
     } else if (name === 'country') {
       this.game.events.emit(EV.toast, `The countryside! Farms, forests and castles are all food out here. Whole towns are on the menu at ${formatSize(this.townEatR())}.`);
+    } else if (name === 'island') {
+      this.game.events.emit(EV.toast, `The island! Hills, forests, ports and mountains, ships out at sea, and whole cities at ${formatSize(this.cityEatR())}.`);
     }
   }
 
@@ -703,9 +718,10 @@ export class GameScene extends Phaser.Scene {
     this.grid.remove(t);
     if (t.box) this.solidGrid.remove(t.box);
     const before = this.r;
-    const town = TOWNS.has(t.def.id);
+    const town = TOWNS.has(t.def.id), city = CITIES.has(t.def.id);
     if (town) this.townsEaten++;
-    const hood = HOODS.has(t.def.id) || town;
+    if (city) this.citiesEaten++;
+    const hood = HOODS.has(t.def.id) || town || city;
     if (HOODS.has(t.def.id)) this.hoodsEaten++;
     if (t.def.name === 'house') this.housesEaten++;
     this.grow(grownRadius(this.r, t.def.size) ** 2 - this.r * this.r);
@@ -721,6 +737,8 @@ export class GameScene extends Phaser.Scene {
     this.game.events.emit(EV.eat, t.def.name);
     if (HOODS.has(t.def.id) && this.hoodsEaten === 1) this.game.events.emit(EV.toast, 'Pepper ate a whole neighborhood!');
     if (town && this.townsEaten === 1) this.game.events.emit(EV.toast, 'Pepper ate a whole town!');
+    if (city && this.citiesEaten === 1) this.game.events.emit(EV.toast, 'Pepper ate a whole city!');
+    if (t.def.id === 'capital') this.game.events.emit(EV.toast, 'Pepper ate the capital!');
     this.afterGrow(before);
   }
 
@@ -784,7 +802,7 @@ export class GameScene extends Phaser.Scene {
     }
     // Size goals, wherever Pepper is
     const passed = (at: number) => before < at && this.r >= at;
-    const houseR = this.houseEatR(), hoodR = this.hoodEatR(), townR = this.townEatR();
+    const houseR = this.houseEatR(), hoodR = this.hoodEatR(), townR = this.townEatR(), cityR = this.cityEatR();
     if (this.outside && this.housesEaten === 0 && passed(houseR)) {
       this.game.events.emit(EV.toast, 'Pepper is big enough to eat houses, fences, everything! Go chomp.');
     }
@@ -796,6 +814,12 @@ export class GameScene extends Phaser.Scene {
     }
     if (this.townsEaten === 0 && passed(townR)) {
       this.game.events.emit(EV.toast, 'Pepper can eat whole towns now! Head out into the countryside and find the biggest one.');
+    }
+    if (passed(ISLAND_R)) {
+      this.game.events.emit(EV.toast, 'Pepper has outgrown the countryside! Head out onto the island: there are hills, mountains and ports, and cities by the sea.');
+    }
+    if (this.citiesEaten === 0 && passed(cityR)) {
+      this.game.events.emit(EV.toast, 'Pepper can eat whole cities now! The biggest is the capital.');
     }
     if (this.outside) this.emitGoal();
     if (this.r >= WIN_R) { this.endRun('won'); return; }
@@ -864,7 +888,7 @@ export class GameScene extends Phaser.Scene {
   private endRun(outcome: RunStats['outcome']) {
     this.finished = true;
     const stats: RunStats = {
-      outcome, seconds: (this.time.now - this.startTime) / 1000, eaten: this.eatenCount, houses: this.housesEaten, hoods: this.hoodsEaten, towns: this.townsEaten,
+      outcome, seconds: (this.time.now - this.startTime) / 1000, eaten: this.eatenCount, houses: this.housesEaten, hoods: this.hoodsEaten, towns: this.townsEaten, cities: this.citiesEaten,
       r: this.r, stacks: { ...this.stacks },
     };
     this.time.delayedCall(1100, () => this.game.events.emit(EV.done, stats));

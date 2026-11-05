@@ -1,6 +1,6 @@
 # Fat Pepper
 
-A Katamari-style browser game about Pepper, a black-and-white border collie who starts as a tiny puppy and eats her way up from crumbs to houses, neighborhoods and whole towns.
+A Katamari-style browser game about Pepper, a black-and-white border collie who starts as a tiny puppy and eats her way up from crumbs to houses, neighborhoods, whole towns and cities, and in the end a whole island.
 
 ## Play
 
@@ -11,16 +11,17 @@ Once GitHub Pages is turned on (Settings → Pages → Source: **GitHub Actions*
 
 ## How a run works
 
-The whole run is one world, with no loading in between: Pepper's house sits on its lot in the neighborhood, the neighborhood sits on the west edge of a market town (its main road carries on as the town's high street), and the town sits in the middle of 8 km of countryside, on the motorway. It's all there from the start, laid out fresh each run, and the camera just keeps pulling back as Pepper grows.
+The whole run is one world, with no loading in between: Pepper's house sits on its lot in the neighborhood, the neighborhood sits on the west edge of a market town (its main road carries on as the town's high street), the town sits in the middle of 8 km of countryside, on the motorway, and the countryside sits in the middle of an island 64 km across. It's all there from the start, laid out fresh each run, and the camera just keeps pulling back as Pepper grows.
 
 1. **Indoors.** Pepper starts as a 12 cm puppy in her bed in the living room of her real house (traced from a floor plan of it). She can eat anything up to about her own size, and every bite makes her bigger and rounder. Grow to 56 cm, then head through the pantry into the garage and jump out the dog door. The flap swings shut behind her.
 2. **The neighborhood.** A main road winds across it, a crescent loops round a little park with a pond, and side streets curve off to cul-de-sacs. Every house faces its street, with a front yard, a driveway and a fenced backyard that opens onto the green behind, and footpaths between the houses every few lots, so there's always a way round. Pepper's own house is one of them, roof off. At 80 cm the dog catcher spots Pepper and gives chase with his net. Keep eating and keep moving; if he catches her, it is off to the pound.
 3. **Turning the tables.** At 2.88 m Pepper is bigger than the dog catcher. He runs, and she can eat him. If she gets to 14 m without catching him, he gives up.
 4. **Eating the neighborhood.** Pepper keeps growing on cars and trees. At about 7.2 m she can eat the smallest houses (smaller houses go first; Big Jaws helps), and every house is a huge bite. From then on yard fences are food too, and so are the walls of her own house.
 5. **The town.** Nothing stops Pepper wandering into town whenever she likes. It's a winding English market town: a high street curving through the market square and town hall, a ring road, side streets and lanes ending in cul-de-sacs, shops, cafés, offices and churches in the middle and houses further out. A river runs through it (small Pepper has to paddle, except on the bridges), there's a railway with its station and trains, a park with a pond, a fairground with a Ferris wheel and circus tent, and woods. Out on the edge of town are more neighborhoods, each a hedged patch of little houses. Once she's 22 m across she's too wide for the streets and steps over anything she can't eat yet, anywhere in the world, so nothing can box her in. At about 90 m she can eat a neighborhood in one gulp.
-6. **The countryside.** All around the town: patchwork fields, rivers and lakes, the motorway and country lanes, with barns, silos, windmills and wind turbines to snack on, then farms, forests and castles. Villages and whole towns are dotted about. At about 416 m she can gulp down a whole town. Reach 800 m and she has eaten the countryside: that's the win.
+6. **The countryside.** All around the town: patchwork fields, rivers and lakes, the motorway and country lanes, with barns, silos, windmills and wind turbines to snack on, then farms, forests and castles. Villages and whole towns are dotted about. At about 416 m she can gulp down a whole town. By 800 m she has outgrown the countryside.
+7. **The island.** All around the countryside, out to the sea: more farmland, villages and towns, hills, great forests and lakes, mountain ranges with rivers running down to the sea, airports, ports with their cranes and container ships, lighthouses on the headlands, and ships, ferries and oil rigs out at sea. The motorway carries on out to the cities. At about 3.2 km she can eat a whole city, and at 5.1 km the capital. Reach 6.4 km and she has eaten the island: that's the win.
 
-**Powerups.** Pepper picks 1 of 3 random powerups at the start of the run, then again at 48 cm, 1.64 m, 28 m, 64 m, 280 m and 600 m. The game pauses for each pick: click or tap a card, or press 1, 2 or 3. Picks stack for the rest of the run, so every run builds differently:
+**Powerups.** Pepper picks 1 of 3 random powerups at the start of the run, then again at 48 cm, 1.64 m, 28 m, 64 m, 280 m, 600 m, 1.4 km and 3 km. The game pauses for each pick: click or tap a card, or press 1, 2 or 3. Picks stack for the rest of the run, so every run builds differently:
 
 | Powerup | What it does (per pick) |
 | --- | --- |
@@ -51,10 +52,11 @@ The code is TypeScript. The house is drawn in 3D with [three.js](https://threejs
 - `src/world3d/` draws the house, Pepper and the camera: `toon.ts` has the soft flat shading and model builder.
 - `src/game/powerups.ts` lists the powerups, how strong each pick is, and the sizes where picks happen.
 - `src/game/tuning.ts` holds the feel numbers: growth rate, what Pepper can eat, speed, how far back the camera sits.
-- `src/game/world.ts` fits the parts of the world together: the house on its lot, the neighborhood on the edge of town, the town in the countryside.
+- `src/game/world.ts` fits the parts of the world together: the house on its lot, the neighborhood on the edge of town, the town in the countryside, the countryside on the island.
 - `src/game/house.ts` is Pepper's house, traced from a hand-drawn floor plan: walls, floors, furniture, and how many of each item get scattered.
 - `src/game/neighborhood.ts` is the winding streets, yards and houses outside, with an empty lot for Pepper's house.
 - `src/game/country.ts` is the countryside and `src/art/countryItems.ts` its farms, forests, castles, villages and towns.
+- `src/game/island.ts` is the island round the countryside and `src/art/islandItems.ts` its ships, lighthouses, hills, ports, airports, mountains and cities.
 - `src/game/town.ts` is the town, laid out fresh each run, and `src/art/townItems.ts` has its buildings, vehicles and whole neighborhoods.
 - `src/game/grid.ts` is a spatial grid, stacked by size, so the game only checks the things near Pepper each frame that are big enough to matter to her. `World3D` draws things in chunks sized to what's in them, skipping chunks that are off screen and things too small to see.
 - `src/scenes/` has the game itself and the HUD.

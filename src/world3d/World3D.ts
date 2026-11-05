@@ -63,6 +63,8 @@ export class World3D {
   /** Walls Pepper can eat, one group each, indexed like [...level.walls, ...level.counters]; a gap for one that stays put. */
   private walls: THREE.Group[] = [];
   private flapAngle = 0;
+  /** The grass under everything, following the camera. */
+  private grass: THREE.Mesh | null = null;
   /** Floor arrows near Pepper: one to the dog door, one warning where the dog catcher is. */
   private arrows: Record<'door' | 'catcher', THREE.Mesh>;
   private camX = 0;
@@ -150,18 +152,17 @@ export class World3D {
       return t;
     };
 
-    const b = house.bounds, span = Math.max(b.w, b.h);
     const tile = house.tile ?? 1;
 
     // Grass all around, reaching past the edges however far back the camera gets. It's drawn at the same
-    // scale everywhere, so there's no seam where one part of the world meets the next.
-    const pad = Math.max(6000, span);
+    // scale everywhere, so there's no seam where one part of the world meets the next. It's one sheet that
+    // travels with the camera (see placeCamera), sized to the view: a sheet as big as the whole island
+    // would be too coarse for the depth buffer up close, and the grass would show through the floors.
     const grassTex = tex('floor-grass');
-    grassTex.repeat.set((b.w + pad) / FLOOR_TILE_WORLD, (b.h + pad) / FLOOR_TILE_WORLD);
-    const grass = new THREE.Mesh(new THREE.PlaneGeometry(b.w + pad, b.h + pad).rotateX(-Math.PI / 2), paint({ map: grassTex }));
-    grass.position.set(b.x + b.w / 2, -1, b.y + b.h / 2);
-    grass.receiveShadow = true;
-    this.root.add(grass);
+    this.grass = new THREE.Mesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), Object.assign(paint({ map: grassTex }), { polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 4 }));
+    this.grass.position.y = -1;
+    this.grass.receiveShadow = true;
+    this.root.add(this.grass);
 
     // Floors, each clipped to its room. A run of floors with the same pattern is merged into one mesh,
     // so a town of hundreds of road pieces is still only a handful of meshes. Later floors sit on top,
@@ -471,6 +472,15 @@ export class World3D {
     this.camera.near = D * 0.1; this.camera.far = D * 3;
     this.camera.updateProjectionMatrix();
     this.camera.lookAt(this.camX, 0, this.camY);
+
+    // The grass sheet follows the camera in whole tiles, so its pattern stays put on the ground.
+    if (this.grass) {
+      const T = FLOOR_TILE_WORLD, S = Math.ceil((D * 8) / (2 * T)) * 2 * T;
+      this.grass.position.x = Math.round(this.camX / T) * T;
+      this.grass.position.z = Math.round(this.camY / T) * T;
+      this.grass.scale.set(S, 1, S);
+      (this.grass.material as THREE.MeshToonMaterial).map!.repeat.set(S / T, S / T);
+    }
 
     // The sun's shadow box travels with the camera.
     const E = visH * Math.max(1, aspect) * 0.75, sc = this.sun.shadow.camera;

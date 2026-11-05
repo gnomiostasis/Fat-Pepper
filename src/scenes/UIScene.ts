@@ -85,16 +85,18 @@ export class UIScene extends Phaser.Scene {
   }
 
   private drawHud() {
-    const pw = 190, ph = 108, x = 16, y = 16;
+    const g0 = this.goal;
+    const open = this.r >= g0.to;
+    this.doorLabel.setText(open ? g0.reached : `${g0.label} ${formatSize(g0.to)}`);
+    // Wide enough for the longest goals
+    const pw = Math.max(190, Math.ceil(this.doorLabel.width) + 32), ph = 108, x = 16, y = 16;
     const g = this.panel.clear();
     card(g, x, y, pw, ph, PAL.cream);
     this.sizeLabel.setPosition(x + 16, y + 12);
     this.sizeText.setText(formatSize(this.r)).setPosition(x + 14, y + 26);
 
-    const g0 = this.goal;
     const pct = Math.max(0, Math.min(1, (this.r - g0.from) / (g0.to - g0.from)));
-    const open = this.r >= g0.to;
-    this.doorLabel.setText(open ? g0.reached : `${g0.label} ${formatSize(g0.to)}`).setPosition(x + 16, y + 72);
+    this.doorLabel.setPosition(x + 16, y + 72);
     const bx = x + 16, by = y + 90, bw = pw - 32, bh = 8;
     this.bar.clear();
     this.bar.fillStyle(hexNum(PAL.paper)).fillRoundedRect(bx, by, bw, bh, 4);
@@ -283,7 +285,7 @@ export class UIScene extends Phaser.Scene {
   private showStart() {
     this.showCard(
       'Fat Pepper',
-      'Pepper is a tiny puppy with a big appetite. Eat anything smaller than you, grow big enough to jump out the dog door, then keep going: the neighborhood, the town and the countryside are all out there, one big world to eat. Every few sizes you pick a powerup, and they stack. Watch out for the dog catcher!',
+      'Pepper is a tiny puppy with a big appetite. Eat anything smaller than you, grow big enough to jump out the dog door, then keep going: the neighborhood, the town, the countryside and the island beyond are all out there, one big world to eat. Every few sizes you pick a powerup, and they stack. Watch out for the dog catcher!',
       touchDevice()
         ? 'Put your thumb down anywhere and drag to steer Pepper. Drag further to run faster. Keyboards: arrow keys or WASD.'
         : 'Move with the arrow keys or WASD, or hold the mouse where Pepper should go.',
@@ -298,10 +300,11 @@ export class UIScene extends Phaser.Scene {
     const houses = `${s.houses} house${s.houses === 1 ? '' : 's'}`;
     const hoods = `${s.hoods} whole neighborhood${s.hoods === 1 ? '' : 's'}`;
     const towns = `${s.towns} whole town${s.towns === 1 ? '' : 's'}`;
+    const cities = `${s.cities} whole cit${s.cities === 1 ? 'y' : 'ies'}`;
     this.showCard(
       won ? 'Pepper ate it all!' : 'Gotcha!',
       won
-        ? `${formatSize(s.r)} of very good dog. She ate ${s.eaten} things in ${m}:${sec}, including ${houses}, ${hoods} and ${towns}.`
+        ? `${formatSize(s.r)} of very good dog. She ate ${s.eaten} things in ${m}:${sec}, including ${houses}, ${hoods}, ${towns} and ${cities}.`
         : `The dog catcher netted Pepper at ${formatSize(s.r)}, after she ate ${s.eaten} things in ${m}:${sec}. Off to the pound!`,
       this.buildLine(s.stacks) || (won ? 'Not a crumb left.' : 'Keep moving and keep eating: he speeds up as you grow.'),
       won ? 'Play again' : 'Try again',
