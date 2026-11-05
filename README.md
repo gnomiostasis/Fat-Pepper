@@ -23,7 +23,7 @@ The whole run is one world, with no loading in between: Pepper's house sits on i
 7. **The island.** All around the countryside, out to the sea: more farmland, villages and towns, hills, great forests and lakes, mountain ranges with rivers running down to the sea, airports, ports with their cranes and container ships, lighthouses on the headlands, and ships, ferries and oil rigs out at sea. The motorway carries on out to the cities. At about 3.2 km she can eat a whole city, and at 5.1 km the capital. At 6.4 km she has outgrown the island.
 8. **The ocean, and up into space.** Out past the island's coast is the open ocean, with Pepper's head up among the clouds. Icebergs drift down from the north, naval fleets sail about, and atolls, clouds and storms are all snacks. At about 11 km she can eat whole islands, then volcanoes, hurricanes and big islands, and at 80 km whole stretches of the mainland. From 20 km across her head is above the clouds. Reach 100 km, the edge of space, and she's made it: that's the win. And she's still hungry: she keeps on growing until she gulps down the whole Earth, and goes into orbit round the sun as a round ball of a dog. Then the orbit shrinks into a thought bubble over her head, and she's back asleep in her bed: it was all a dream. The ending stops on exactly the frame the game opened on, so press Play again and she wakes up and it all starts over.
 
-**Powerups.** Pepper picks 1 of 3 random powerups at the start of the run, then again at 48 cm, 1.64 m, 28 m, 64 m, 280 m, 600 m, 1.4 km, 3 km, 12 km and 32 km. The game pauses for each pick: click or tap a card, or press 1, 2 or 3. Picks stack for the rest of the run, so every run builds differently:
+**Powerups.** Pepper picks 1 of 3 random powerups when she first wakes up, then once each time she reaches a new size threshold on the goal bar: the dog door, the dog catcher showing up, eating the catcher, then eating houses, neighborhoods, towns, outgrowing the countryside, eating cities, outgrowing the island, eating islands and eating the mainland. There are no picks at any other time. The game pauses for each pick: click or tap a card, or press 1, 2 or 3. Picks stack for the rest of the run, so every run builds differently:
 
 | Powerup | What it does (per pick) |
 | --- | --- |
@@ -50,7 +50,7 @@ The code is TypeScript. The house is drawn in 3D with [three.js](https://threejs
 
 - `src/art/items.ts` lists every item and piece of furniture with its 3D model, built from simple shapes.
 - `src/world3d/` draws the house, Pepper and the camera: `toon.ts` has the soft flat shading and model builder. `ending.ts` is the ending, where Pepper eats the Earth and goes into orbit.
-- `src/game/powerups.ts` lists the powerups, how strong each pick is, and the sizes where picks happen.
+- `src/game/powerups.ts` lists the powerups, and how strong each pick is. The thresholds that give a pick are in `thresholds()` in `src/scenes/GameScene.ts`.
 - `src/game/tuning.ts` holds the feel numbers: growth rate, what Pepper can eat, speed, how far back the camera sits.
 - `src/game/world.ts` fits the parts of the world together: the house on its lot, the neighborhood on the edge of town, the town in the countryside, the countryside on the island, the island in the ocean.
 - `src/game/house.ts` is Pepper's house, traced from a hand-drawn floor plan: walls, floors, furniture, and how many of each item get scattered.

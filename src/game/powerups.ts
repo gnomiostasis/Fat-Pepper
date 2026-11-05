@@ -1,4 +1,4 @@
-// Roguelike powerups: at each size milestone Pepper picks 1 of 3, and picks stack for the rest of the run.
+// Roguelike powerups: at the start and at each new size threshold Pepper picks 1 of 3, and picks stack for the rest of the run.
 
 export type PowerId =
   | 'zoomies' | 'magnet' | 'jaws' | 'appetite' | 'tongue'
@@ -56,11 +56,6 @@ export const STREAK_GAP = 1.2;
 export const RUSH = 0.3;
 export const RUSH_TIME = 1;
 
-/**
- * Pepper's radius at each powerup pick after the free one at the start: every ~3.5x of growth,
- * plus two more in town and two in the countryside. The dog door is at 28, the catcher shows up at 40 and is eaten at 250 (5 m), and town starts at 700.
- */
-export const MILESTONES = [24, 82, 1400, 3200, 14000, 30000, 70000, 150000, 600000, 1600000];
 
 export type Stacks = Partial<Record<PowerId, number>>;
 
