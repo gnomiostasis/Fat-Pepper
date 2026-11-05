@@ -78,6 +78,9 @@ interface Catcher {
   stun: number;
 }
 
+/** The slowest anything in the house slides when Pepper leans on it, as a share of her pace. */
+const PUSH_MIN = 0.1;
+
 /** Sizes of the cells in the stacked spatial hashes, from crumbs up to whole towns. */
 const TIERS = [200, 2000, 20000, 200000];
 
@@ -135,6 +138,9 @@ export class GameScene extends Phaser.Scene {
   private y = 0;
   private vx = 0;
   private vy = 0;
+  /** The velocity the player is steering for this frame, which is how hard Pepper leans on what she's pushing. */
+  private wantX = 0;
+  private wantY = 0;
   private heading = -Math.PI / 2;
   private walkPhase = 0;
   private chomp = 0;
@@ -437,6 +443,7 @@ export class GameScene extends Phaser.Scene {
 
     this.rushT = Math.max(0, this.rushT - dt);
     const speed = this.topSpeed() * ease * this.paddle(), a = 1 - Math.exp(-dt * 22);
+    this.wantX = dx * speed; this.wantY = dy * speed;
     this.vx += (dx * speed - this.vx) * a;
     this.vy += (dy * speed - this.vy) * a;
     this.x += this.vx * dt;
@@ -445,7 +452,7 @@ export class GameScene extends Phaser.Scene {
     // Bite first, then bump: anything she has just walked into and is big enough for gets eaten
     // before it can push her back, so she ploughs straight through houses, fences and furniture.
     this.eatNearby();
-    this.collide(time);
+    this.collide(time, dt);
     if (this.finished) return;
     const b = this.level.bounds;
     this.x = Phaser.Math.Clamp(this.x, b.x + this.r, b.x + b.w - this.r);
@@ -460,7 +467,7 @@ export class GameScene extends Phaser.Scene {
     this.walkPhase += (v / this.r) * dt * 1.4;
   }
 
-  private collide(time: number) {
+  private collide(time: number, dt: number) {
     const r = this.r;
     // Once Pepper is too wide for the town's streets she steps over whatever she can't eat yet,
     // anywhere, so nothing in the whole world can box her in.
@@ -505,6 +512,18 @@ export class GameScene extends Phaser.Scene {
         this.game.events.emit(EV.toast, `A whole town is too big to eat yet! Pepper can gulp one at ${formatSize(this.townEatR())}.`);
       }
 
+      // Indoors, furniture she can't eat or hop yet budges a little each time she leans on it.
+      const owner = this.boxOwner.get(b);
+      if (owner && d > 0.0001 && this.shove(owner, ox / d, oy / d, dt)) {
+        const mx = Phaser.Math.Clamp(this.x, b.x, b.x + b.w), my = Phaser.Math.Clamp(this.y, b.y, b.y + b.h);
+        ox = this.x - mx; oy = this.y - my;
+        const d2 = Math.hypot(ox, oy);
+        if (d2 >= r) continue;
+        if (d2 > 0.0001) { ox /= d2; oy /= d2; this.x = mx + ox * r; this.y = my + oy * r; }
+        const vn = this.vx * ox + this.vy * oy;
+        if (vn < 0) { this.vx -= vn * ox; this.vy -= vn * oy; }
+        continue;
+      }
       if (d > 0.0001) { ox /= d; oy /= d; this.x = nx + ox * r; this.y = ny + oy * r; }
       else {
         // Centre is inside the box: push out the shortest way.
@@ -535,11 +554,84 @@ export class GameScene extends Phaser.Scene {
       const d = Math.hypot(ox, oy), min = r + t.rad * 0.85;
       if (d >= min || d < 0.0001) continue;
       ox /= d; oy /= d;
+      // Indoors she nudges it along instead, slowly, so nothing can wall her in.
+      if (this.shove(t, ox, oy, dt)) {
+        ox = this.x - t.x; oy = this.y - t.y;
+        const d2 = Math.hypot(ox, oy);
+        if (d2 >= min || d2 < 0.0001) { this.world.wobble(t); continue; }
+        ox /= d2; oy /= d2;
+      }
       this.x = t.x + ox * min; this.y = t.y + oy * min;
       const vn = this.vx * ox + this.vy * oy;
       if (vn < 0) { this.vx -= vn * ox; this.vy -= vn * oy; }
       this.world.wobble(t);
     }
+  }
+
+  /**
+   * Pepper leans into something in the house that she can't eat yet (it's off along -ox,-oy from her):
+   * it slides away from her, slower the bigger it is next to her, and stops at walls and other furniture.
+   * Returns whether it moved.
+   */
+  private shove(t: Thing, ox: number, oy: number, dt: number) {
+    if (t.eaten || !this.inHouse(t.x, t.y)) return false;
+    const press = -(this.wantX * ox + this.wantY * oy);
+    if (press <= 0) return false;
+    // How easy it is to push: about half her pace for something just out of reach, a crawl for the sofa.
+    const eatSize = this.r * (EAT_RATIO + JAWS * this.n('jaws'));
+    const ease = Phaser.Math.Clamp((0.55 * eatSize) / t.def.size, PUSH_MIN, 0.55) * (t.box ? 0.7 : 1);
+    const step = press * ease * dt;
+    const mx = -ox * step, my = -oy * step;
+    if (t.box) {
+      // Try the whole nudge, then each half of it on its own, so it slides along a wall it's against.
+      const b = t.box, x0 = b.x, y0 = b.y;
+      for (const [sx, sy] of [[mx, my], [mx, 0], [0, my]]) {
+        if (Math.abs(sx) + Math.abs(sy) < 1e-4) continue;
+        b.x = x0 + sx; b.y = y0 + sy;
+        if (this.boxFree(b)) {
+          t.x += sx; t.y += sy;
+          this.solidGrid.remove(b); this.solidGrid.insertBox(b, b);
+          this.grid.remove(t); this.grid.insertBox(t, b);
+          this.world.move(t);
+          return true;
+        }
+      }
+      b.x = x0; b.y = y0;
+      return false;
+    }
+    // A loose thing slides along whatever it's pushed into.
+    let x = t.x + mx, y = t.y + my;
+    const rad = t.rad * 0.85;
+    for (let pass = 0; pass < 2; pass++) {
+      for (const sg of this.segs) {
+        const hit = segHit(x, y, sg), min = rad + sg.t / 2;
+        if (hit.d >= min || hit.d < 0.0001) continue;
+        x = hit.x + ((x - hit.x) / hit.d) * min; y = hit.y + ((y - hit.y) / hit.d) * min;
+      }
+      for (const b of this.solidsNear(x, y, rad + 1)) {
+        const nx = Phaser.Math.Clamp(x, b.x, b.x + b.w), ny = Phaser.Math.Clamp(y, b.y, b.y + b.h);
+        const d = Math.hypot(x - nx, y - ny);
+        if (d >= rad) continue;
+        if (d < 0.0001) return false;
+        x = nx + ((x - nx) / d) * rad; y = ny + ((y - ny) / d) * rad;
+      }
+    }
+    // Wedged in a corner: leave it where it was.
+    if (Math.hypot(x - t.x, y - t.y) < step * 0.05) return false;
+    if (this.segs.some((sg) => segHit(x, y, sg).d < rad + sg.t / 2 - 0.5)) return false;
+    t.x = x; t.y = y;
+    this.grid.remove(t);
+    this.grid.insert(t, t.x - t.rad, t.y - t.rad, t.x + t.rad, t.y + t.rad);
+    this.world.move(t);
+    this.world.wobble(t);
+    return true;
+  }
+
+  /** Is a pushed piece of furniture clear of the walls and everything else solid? */
+  private boxFree(b: Box) {
+    if (this.segs.some((sg) => segBoxDist(sg, b) < sg.t / 2)) return false;
+    return !this.solidsNear(b.x + b.w / 2, b.y + b.h / 2, Math.max(b.w, b.h)).some((o) =>
+      o !== b && o.x < b.x + b.w && b.x < o.x + o.w && o.y < b.y + b.h && b.y < o.y + o.h);
   }
 
   private eatNearby() {
@@ -1136,6 +1228,20 @@ function polyArea(poly: Pt[]) {
 function circleBoxDist(x: number, y: number, b: Box) {
   const nx = Phaser.Math.Clamp(x, b.x, b.x + b.w), ny = Phaser.Math.Clamp(y, b.y, b.y + b.h);
   return Math.hypot(x - nx, y - ny);
+}
+
+/** How far a wall segment's centre line comes to a box (0 if it crosses it). */
+function segBoxDist(sg: Seg, b: Box) {
+  const [ax, ay] = sg.a, [bx, by] = sg.b;
+  const inside = (x: number, y: number) => x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
+  if (inside(ax, ay) || inside(bx, by)) return 0;
+  const cs: Pt[] = [[b.x, b.y], [b.x + b.w, b.y], [b.x + b.w, b.y + b.h], [b.x, b.y + b.h]];
+  const cross = (p: Pt, q: Pt, r: Pt) => (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
+  for (let i = 0; i < 4; i++) {
+    const c = cs[i], e = cs[(i + 1) % 4];
+    if (cross(sg.a, sg.b, c) * cross(sg.a, sg.b, e) < 0 && cross(c, e, sg.a) * cross(c, e, sg.b) < 0) return 0;
+  }
+  return Math.min(circleBoxDist(ax, ay, b), circleBoxDist(bx, by, b), ...cs.map((c) => segHit(c[0], c[1], sg).d));
 }
 
 /** Closest point on a wall segment to x,y, and the distance to it. */
