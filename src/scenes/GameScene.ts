@@ -151,6 +151,8 @@ export class GameScene extends Phaser.Scene {
   /** The velocity the player is steering for this frame, which is how hard Pepper leans on what she's pushing. */
   private wantX = 0;
   private wantY = 0;
+  /** Pepper is pushing something this frame, so she keeps facing where she's steering. */
+  private pushing = false;
   private heading = -Math.PI / 2;
   private walkPhase = 0;
   private chomp = 0;
@@ -485,6 +487,7 @@ export class GameScene extends Phaser.Scene {
     // Bite first, then bump: anything she has just walked into and is big enough for gets eaten
     // before it can push her back, so she ploughs straight through houses, fences and furniture.
     this.eatNearby();
+    this.pushing = false;
     this.collide(time, dt);
     if (this.finished) return;
     const b = this.level.bounds;
@@ -496,7 +499,8 @@ export class GameScene extends Phaser.Scene {
     this.stepCatcher(dt);
 
     const v = Math.hypot(this.vx, this.vy);
-    if (v > this.topSpeed() * 0.1) this.heading = Phaser.Math.Angle.RotateTo(this.heading, Math.atan2(this.vy, this.vx), dt * 24);
+    if (this.pushing && (this.wantX || this.wantY)) this.heading = Phaser.Math.Angle.RotateTo(this.heading, Math.atan2(this.wantY, this.wantX), dt * 8);
+    else if (v > this.topSpeed() * 0.1) this.heading = Phaser.Math.Angle.RotateTo(this.heading, Math.atan2(this.vy, this.vx), dt * 24);
     this.walkPhase += (v / this.r) * dt * 1.4;
   }
 
@@ -547,14 +551,16 @@ export class GameScene extends Phaser.Scene {
 
       // Indoors, furniture she can't eat or hop yet budges a little each time she leans on it.
       const owner = this.boxOwner.get(b);
-      if (owner && d > 0.0001 && this.shove(owner, ox / d, oy / d, dt)) {
+      const moved = owner && d > 0.0001 ? this.shove(owner, ox / d, oy / d, dt) : 0;
+      if (moved > 0) {
         const mx = Phaser.Math.Clamp(this.x, b.x, b.x + b.w), my = Phaser.Math.Clamp(this.y, b.y, b.y + b.h);
         ox = this.x - mx; oy = this.y - my;
         const d2 = Math.hypot(ox, oy);
-        if (d2 >= r) continue;
-        if (d2 > 0.0001) { ox /= d2; oy /= d2; this.x = mx + ox * r; this.y = my + oy * r; }
-        const vn = this.vx * ox + this.vy * oy;
-        if (vn < 0) { this.vx -= vn * ox; this.vy -= vn * oy; }
+        if (d2 > 0.0001) {
+          ox /= d2; oy /= d2;
+          if (d2 < r) { this.x = mx + ox * r; this.y = my + oy * r; }
+          this.leanOn(ox, oy, moved / dt);
+        }
         continue;
       }
       if (d > 0.0001) { ox /= d; oy /= d; this.x = nx + ox * r; this.y = ny + oy * r; }
@@ -588,11 +594,15 @@ export class GameScene extends Phaser.Scene {
       if (d >= min || d < 0.0001) continue;
       ox /= d; oy /= d;
       // Indoors she nudges it along instead, slowly, so nothing can wall her in.
-      if (this.shove(t, ox, oy, dt)) {
+      const moved = this.shove(t, ox, oy, dt);
+      if (moved > 0) {
         ox = this.x - t.x; oy = this.y - t.y;
         const d2 = Math.hypot(ox, oy);
-        if (d2 >= min || d2 < 0.0001) { this.world.wobble(t); continue; }
+        if (d2 < 0.0001) continue;
         ox /= d2; oy /= d2;
+        if (d2 < min) { this.x = t.x + ox * min; this.y = t.y + oy * min; }
+        this.leanOn(ox, oy, moved / dt);
+        continue;
       }
       this.x = t.x + ox * min; this.y = t.y + oy * min;
       const vn = this.vx * ox + this.vy * oy;
@@ -602,14 +612,24 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
+   * Pepper is pushing something along -ox,-oy at `speed`: she walks with it at its pace, instead of
+   * stopping dead against it each frame and starting off again the next, which made her stutter.
+   */
+  private leanOn(ox: number, oy: number, speed: number) {
+    const vn = this.vx * ox + this.vy * oy;
+    this.vx -= (vn + speed) * ox; this.vy -= (vn + speed) * oy;
+    this.pushing = true;
+  }
+
+  /**
    * Pepper leans into something in the house that she can't eat yet (it's off along -ox,-oy from her):
    * it slides away from her, slower the bigger it is next to her, and stops at walls and other furniture.
-   * Returns whether it moved.
+   * Returns how far it moved away from her (0 if it didn't budge).
    */
   private shove(t: Thing, ox: number, oy: number, dt: number) {
-    if (t.eaten || !this.inHouse(t.x, t.y)) return false;
+    if (t.eaten || !this.inHouse(t.x, t.y)) return 0;
     const press = -(this.wantX * ox + this.wantY * oy);
-    if (press <= 0) return false;
+    if (press <= 0) return 0;
     // How easy it is to push: about half her pace for something just out of reach, a crawl for the sofa.
     const eatSize = this.r * (EAT_RATIO + JAWS * this.n('jaws'));
     const ease = Phaser.Math.Clamp((0.55 * eatSize) / t.def.size, PUSH_MIN, 0.55) * (t.box ? 0.7 : 1);
@@ -626,11 +646,11 @@ export class GameScene extends Phaser.Scene {
           this.solidGrid.remove(b); this.solidGrid.insertBox(b, b);
           this.grid.remove(t); this.grid.insertBox(t, b);
           this.world.move(t);
-          return true;
+          return Math.max(0, -(sx * ox + sy * oy));
         }
       }
       b.x = x0; b.y = y0;
-      return false;
+      return 0;
     }
     // A loose thing slides along whatever it's pushed into.
     let x = t.x + mx, y = t.y + my;
@@ -645,19 +665,20 @@ export class GameScene extends Phaser.Scene {
         const nx = Phaser.Math.Clamp(x, b.x, b.x + b.w), ny = Phaser.Math.Clamp(y, b.y, b.y + b.h);
         const d = Math.hypot(x - nx, y - ny);
         if (d >= rad) continue;
-        if (d < 0.0001) return false;
+        if (d < 0.0001) return 0;
         x = nx + ((x - nx) / d) * rad; y = ny + ((y - ny) / d) * rad;
       }
     }
     // Wedged in a corner: leave it where it was.
-    if (Math.hypot(x - t.x, y - t.y) < step * 0.05) return false;
-    if (this.segs.some((sg) => segHit(x, y, sg).d < rad + sg.t / 2 - 0.5)) return false;
+    if (Math.hypot(x - t.x, y - t.y) < step * 0.05) return 0;
+    if (this.segs.some((sg) => segHit(x, y, sg).d < rad + sg.t / 2 - 0.5)) return 0;
+    const moved = Math.max(0, -((x - t.x) * ox + (y - t.y) * oy));
     t.x = x; t.y = y;
     this.grid.remove(t);
     this.grid.insert(t, t.x - t.rad, t.y - t.rad, t.x + t.rad, t.y + t.rad);
     this.world.move(t);
     this.world.wobble(t);
-    return true;
+    return moved;
   }
 
   /** Is a pushed piece of furniture clear of the walls and everything else solid? */
