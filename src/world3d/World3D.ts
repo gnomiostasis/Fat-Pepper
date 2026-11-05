@@ -6,6 +6,7 @@ import { FLOOR_TILE_WORLD, floorCanvases } from '../art/textures';
 import type { Level, Seg } from '../game/level';
 import { Catcher3D } from './catcher3d';
 import { Dog3D, DogPose } from './dog3d';
+import { Ending } from './ending';
 import { ModelBuilder, ink, inkResolution, inkedMesh, paint } from './toon';
 
 const COUNTER_H = 26;
@@ -45,6 +46,8 @@ interface Anim {
 export class World3D {
   readonly renderer: THREE.WebGLRenderer;
   readonly dog = new Dog3D();
+  /** The ending, once Pepper reaches space; while it runs, it's what gets drawn. */
+  private ending: Ending | null = null;
   readonly catcher = new Catcher3D();
   private scene = new THREE.Scene();
   private camera = new THREE.PerspectiveCamera(FOV, 1, 1, 10000);
@@ -127,6 +130,7 @@ export class World3D {
 
   /** Clears the last level and builds this one fresh. */
   build(house: Level) {
+    this.stopEnding();
     // Free last run's GPU memory, but keep the item models: they're the same every run.
     const keep = new Set<THREE.BufferGeometry>();
     for (const m of this.models.values()) { keep.add(m.fill); if (m.line) keep.add(m.line); }
@@ -454,6 +458,27 @@ export class World3D {
     this.dog.pose(p);
   }
 
+  /** Plays the ending: Pepper eats the Earth, then orbits the sun. */
+  startEnding() {
+    if (!this.ending) this.ending = new Ending(this.dog);
+  }
+
+  private stopEnding() {
+    if (!this.ending) return;
+    this.ending.release(this.scene);
+    this.ending = null;
+  }
+
+  /** Pepper's width in km during the ending, or null when it isn't playing. */
+  endingKm() {
+    return this.ending ? this.ending.sizeKm : null;
+  }
+
+  /** Seconds into the ending, or null when it isn't playing. */
+  endingTime() {
+    return this.ending ? this.ending.t : null;
+  }
+
   /** How far into space Pepper's head is, 0..1: the sky past the horizon fades from grass green to night. */
   setSpace(k: number) {
     (this.scene.background as THREE.Color).set(PAL.avocado).lerp(SPACE_SKY, k);
@@ -522,6 +547,11 @@ export class World3D {
 
   render(dt: number) {
     this.time += dt;
+    if (this.ending) {
+      this.ending.update(dt, this.camera.aspect);
+      this.renderer.render(this.ending.scene, this.ending.camera);
+      return;
+    }
     this.anims = this.anims.filter((a) => {
       a.t += dt;
       const k = Math.min(1, a.t / a.dur);

@@ -31,7 +31,7 @@ export function formatSize(r: number) {
   const cm = r * 2;
   if (cm < 100) return `${cm.toFixed(cm < 20 ? 1 : 0)} cm`;
   const m = cm / 100;
-  if (m >= 1000) { const km = m / 1000; return `${km.toFixed(km < 10 ? 2 : km < 100 ? 1 : 0)} km`; }
+  if (m >= 1000) { const km = m / 1000; return km >= 1000 ? `${Math.round(km).toLocaleString('en-US')} km` : `${km.toFixed(km < 10 ? 2 : km < 100 ? 1 : 0)} km`; }
   return `${m.toFixed(m < 10 ? 2 : m < 100 ? 1 : 0)} m`;
 }
 

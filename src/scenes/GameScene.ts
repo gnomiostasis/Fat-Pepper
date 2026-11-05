@@ -16,6 +16,7 @@ import {
 } from '../game/tuning';
 import { ITEMS } from '../art/items';
 import { Placed, World3D, getWorld } from '../world3d/World3D';
+import { ENDING_CARD } from '../world3d/ending';
 import { EV, Goal, PowerState, RunStats } from './events';
 
 interface Thing extends Placed {
@@ -144,6 +145,8 @@ export class GameScene extends Phaser.Scene {
   private lastPop = 0;
   private started = false;
   private finished = false;
+  /** The run's stats, held back while the ending plays. */
+  private endStats: RunStats | null = null;
   private eatenCount = 0;
   private startTime = 0;
   private tooSmallUntil = 0;
@@ -172,7 +175,7 @@ export class GameScene extends Phaser.Scene {
     this.r = this.shownR = START_R;
     this.vx = this.vy = 0; this.heading = -Math.PI / 2; this.walkPhase = 0; this.chomp = 0;
     this.biteT = -1; this.happy = 0; this.lastPop = 0;
-    this.started = false; this.finished = false; this.eatenCount = 0; this.tooSmallUntil = 0;
+    this.started = false; this.finished = false; this.endStats = null; this.eatenCount = 0; this.tooSmallUntil = 0;
     this.outside = false; this.seen = new Set(['house']); this.houseGone = false;
     this.catcher = null; this.catcherEaten = false; this.zoom = 1;
     this.houses = []; this.housesEaten = 0; this.hoodsEaten = 0; this.townsEaten = 0; this.citiesEaten = 0; this.islesEaten = 0; this.mainlandEaten = 0;
@@ -371,6 +374,18 @@ export class GameScene extends Phaser.Scene {
 
   update(time: number, delta: number) {
     const dt = Math.min(delta / 1000, 0.05);
+    // The ending plays on its own; the HUD keeps up with how big Pepper is getting.
+    const km = this.world.endingKm();
+    if (km !== null) {
+      this.game.events.emit(EV.size, Math.max(this.r, km * 50000));
+      this.world.render(dt);
+      // The finish card comes up once she's settled into orbit.
+      if (this.endStats && (this.world.endingTime() ?? 0) >= ENDING_CARD) {
+        this.game.events.emit(EV.done, { ...this.endStats, r: Math.max(this.r, km * 50000) });
+        this.endStats = null;
+      }
+      return;
+    }
     if (this.started && !this.finished && !this.picking) {
       this.step(time, dt);
       if (this.pendingPicks > 0) this.offerPowers();
@@ -935,7 +950,14 @@ export class GameScene extends Phaser.Scene {
       outcome, seconds: (this.time.now - this.startTime) / 1000, eaten: this.eatenCount, houses: this.housesEaten, hoods: this.hoodsEaten, towns: this.townsEaten, cities: this.citiesEaten, islands: this.islesEaten,
       r: this.r, stacks: { ...this.stacks },
     };
-    this.time.delayedCall(1100, () => this.game.events.emit(EV.done, stats));
+    if (outcome === 'won') {
+      // Pepper's head is in space. She keeps growing until she eats the whole world, then goes into orbit.
+      this.game.events.emit(EV.toast, 'Pepper reached space! And she\'s still hungry...');
+      this.world.startEnding();
+      this.endStats = stats;
+    } else {
+      this.time.delayedCall(1100, () => this.game.events.emit(EV.done, stats));
+    }
   }
 
   // ---------- the dog catcher ----------
