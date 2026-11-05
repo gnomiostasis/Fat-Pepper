@@ -101,11 +101,35 @@ export const OCEAN_ITEMS: ItemDef[] = [
     b.box(10, -8, 1.6, 1.2, 0.3, 0.8, PAL.cream).pyramid(10, -8, 1.8, 1.4, 1.1, 0.6, PAL.mustard);
   } },
 
+  // ---- mountains and volcanoes, sitting on the islands, eaten before the islands themselves ----
+  { id: 'seapeak', name: 'mountain', size: 300000, w: 32, h: 32, furniture: true, model(b) {
+    peak(b, 0, 0, 12, 20);
+    peak(b, 7, 6, 6, 9);
+    peak(b, -7, 5, 5, 7);
+  } },
+  { id: 'volcanocone', name: 'volcano', size: 720000, w: 32, h: 32, furniture: true, model(b) {
+    const r = seeded(63);
+    b.cone(0, 0, 14, 0, 12.8, DARKROCK).cyl(0, 0, 3, 10.5, 0.7, PAL.orange, { r2: 4.2 }).cyl(0, 0, 2.1, 11.1, 0.3, PAL.yellow, flat);
+    // Lava running down one side, and a plume of smoke
+    for (let i = 0; i < 5; i++) b.box(1.2 + i * 1.9, 1.2 + i * 0.7, 1.6, 0.9, 10.4 - i * 2.3, 0.45, PAL.orange, { ...flat, rz: -0.7, ry: -0.35 });
+    for (let i = 0; i < 6; i++) b.ball((r() - 0.5) * 3.5, 14.6 + i * 2.6, -i * 1.4, 2.3 + i * 0.7, i < 2 ? '#8f8d89' : PAL.greyLight, { ink: false });
+  } },
+  { id: 'massif', name: 'mountain range', size: 1000000, w: 32, h: 32, furniture: true, model(b) {
+    peak(b, 0, 0, 8, 17);
+    peak(b, -6, -4, 7, 13);
+    peak(b, 5, -5, 6.5, 11);
+    peak(b, 4, 5, 7, 12);
+    peak(b, -6, 6, 5.5, 9);
+    peak(b, -10, 1, 4, 7);
+    peak(b, 10, 0, 4, 7);
+  } },
+
   // ---- meals ----
   { id: 'isle', name: 'island', size: 700000, w: 32, h: 32, furniture: true, model(b) {
     const r = seeded(59);
     land(b, r, [[0, 0, 11], [-6, 6, 7], [7, -5, 6], [5, 8, 5]]);
-    b.ball(-2, 0, -1, 7, PAL.lettuce, { sy: 0.35 }).ball(-2, 0.4, -1, 3, ROCK, { sy: 0.9 });
+    // Its mountain is a separate thing on top (ISLAND_TOPS), eaten first
+    b.ball(-3, 0, -2, 7, PAL.lettuce, { sy: 0.2 });
     village(b, r, 6, 5, 3, 14);
     for (let i = 0; i < 40; i++) {
       const a = r() * Math.PI * 2, d = 4 + r() * 8;
@@ -114,13 +138,10 @@ export const OCEAN_ITEMS: ItemDef[] = [
     for (let i = 0; i < 8; i++) { const a = r() * Math.PI * 2; palm(b, Math.cos(a) * 11.5, Math.sin(a) * 11.5, 0.7); }
     b.cyl(-11, -5, 0.4, 0.3, 2.4, PAL.white).cyl(-11, -5, 0.45, 2.7, 0.5, PAL.collar);
   } },
-  { id: 'volcano', name: 'volcano', size: 1000000, w: 32, h: 32, furniture: true, model(b) {
+  { id: 'volcano', name: 'volcanic island', size: 1000000, w: 32, h: 32, furniture: true, model(b) {
     const r = seeded(61);
-    b.cyl(0, 0, 15, 0, 0.15, SAND, flat).cyl(0, 0, 14, 0.15, 0.4, '#9cbf7f', flat);
-    b.cone(0, 0, 12, 0.5, 11, DARKROCK).cyl(0, 0, 2.6, 9.5, 0.6, PAL.orange, { r2: 3.6 }).cyl(0, 0, 1.8, 10, 0.25, PAL.yellow, flat);
-    // Lava running down one side, and a plume of smoke
-    for (let i = 0; i < 5; i++) b.box(1 + i * 1.6, 1 + i * 0.6, 1.4, 0.8, 9.4 - i * 2, 0.4, PAL.orange, { ...flat, rz: -0.7, ry: -0.35 });
-    for (let i = 0; i < 6; i++) b.ball((r() - 0.5) * 3, 13 + i * 2.2, -i * 1.2, 2 + i * 0.6, i < 2 ? '#8f8d89' : PAL.greyLight, { ink: false });
+    // Black rock where the volcano stands: the volcano itself is a separate thing on top (ISLAND_TOPS), eaten first
+    b.cyl(0, 0, 15, 0, 0.15, SAND, flat).cyl(0, 0, 14, 0.15, 0.4, '#9cbf7f', flat).cyl(0, 0, 10.5, 0.5, 0.1, DARKROCK, flat);
     for (let i = 0; i < 24; i++) { const a = r() * Math.PI * 2; tree(b, Math.cos(a) * 12.5, Math.sin(a) * 12.5, 0.5, PAL.avocadoDark, 0.5); }
   } },
   { id: 'hurricane', name: 'hurricane', size: 1600000, w: 32, h: 32, model(b) {
@@ -139,7 +160,7 @@ export const OCEAN_ITEMS: ItemDef[] = [
     const r = seeded(67);
     land(b, r, [[0, 0, 12], [-7, 6, 8], [8, -6, 7], [6, 8, 6], [-8, -6, 6]]);
     // Mountains down the middle, cities on the coast, forests and a lake between
-    for (const [x, z, s] of [[-2, -2, 3.6], [1, 1, 3], [-4, 2, 2.6], [3, -4, 2.4]]) peak(b, x, z, s, s * 1.6, 0.3);
+    // (its mountains are separate things on top: ISLAND_TOPS)
     towers(b, r, 9, 6, 3, 3.5);
     towers(b, r, -9, -5, 2.4, 2.5);
     village(b, r, -7, 8, 3, 12);
@@ -155,11 +176,11 @@ export const OCEAN_ITEMS: ItemDef[] = [
     land(b, r, [[0, 0, 12.5], [-8, -7, 7], [8, -7, 7], [-8, 7, 7], [8, 7, 7], [0, 11, 5], [0, -11, 5], [11, 0, 5], [-11, 0, 5]]);
     // A desert, a long mountain range with snow, a megacity on the bay and smaller cities about
     b.cyl(-7, -6, 5, 0.42, 0.06, '#ecd39a', flat);
-    for (let i = 0; i < 8; i++) peak(b, -9 + i * 2.4, 6 - i * 0.9 + (r() - 0.5) * 2, 1.8 + r() * 1.2, 2.6 + r() * 2.4, 0.4);
+    // (its mountain range is separate things on top: ISLAND_TOPS)
     towers(b, r, 7, -6, 4, 5);
     towers(b, r, -3, 9, 2.4, 2.4);
     towers(b, r, 9, 7, 2, 2);
-    b.box(-1, -1, 20, 0.4, 0.44, 0.04, '#9fcbe0', { ...flat, ry: 0.6 }).cyl(2, 3, 1.8, 0.44, 0.05, '#9fcbe0', flat);
+    b.box(-1, -1, 20, 0.4, 0.44, 0.04, '#9fcbe0', { ...flat, ry: 0.6 }).cyl(4, 5, 1.8, 0.44, 0.05, '#9fcbe0', flat);
     for (let i = 0; i < 90; i++) {
       const a = r() * Math.PI * 2, d = 3 + r() * 12, x = Math.cos(a) * d, z = Math.sin(a) * d;
       if (Math.hypot(x - 7, z + 6) < 4.4 || Math.hypot(x + 7, z + 6) < 5.2) continue;
@@ -167,3 +188,15 @@ export const OCEAN_ITEMS: ItemDef[] = [
     }
   } },
 ];
+
+/**
+ * What sits on top of each kind of island as its own smaller meal, so Pepper can eat the mountains and
+ * volcanoes off an island before she's big enough for the whole thing: [id, x, z] in the island's own
+ * model units (its 32 x 32 footprint, centred on 0,0).
+ */
+export const ISLAND_TOPS: Record<string, [string, number, number][]> = {
+  isle: [['seapeak', -3, -2]],
+  volcano: [['volcanocone', 0, 0]],
+  bigisle: [['massif', -1, -1], ['seapeak', 4.5, 2.5], ['seapeak', 2, -6.5]],
+  mainland: [['massif', -8, 5.5], ['massif', -3.5, 3.4], ['massif', 0.5, 1.5], ['seapeak', 5, 0.6], ['seapeak', 7.5, -0.2]],
+};

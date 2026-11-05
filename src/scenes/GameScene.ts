@@ -26,6 +26,8 @@ interface Thing extends Placed {
   /** Collision box for furniture. */
   box?: Box;
   eaten: boolean;
+  /** The mountains and volcanoes sitting on an island, which go down with it if Pepper hasn't eaten them first. */
+  tops?: Thing[];
 }
 
 /** A building in the neighborhood, which Pepper can eat once she's big enough. */
@@ -51,6 +53,8 @@ const TOWNS = new Set(['smalltown', 'bigtown']);
 const CITIES = new Set(['city', 'capital']);
 /** Things out in the ocean that count as a whole island. */
 const ISLES = new Set(['isle', 'bigisle', 'volcano', 'mainland']);
+/** Mountains and volcanoes sitting on top of the ocean's islands, smaller meals than the islands under them. */
+const TOPS = new Set(['seapeak', 'massif', 'volcanocone']);
 
 /** The dog catcher, once he's on Pepper's trail. */
 interface Catcher {
@@ -127,6 +131,8 @@ export class GameScene extends Phaser.Scene {
   private citiesEaten = 0;
   private islesEaten = 0;
   private mainlandEaten = 0;
+  /** Pepper has eaten a mountain or volcano off an island. */
+  private topEaten = false;
   /** Building edges, solid like walls but drawn as part of the building. */
   private buildingPolys: Pt[][] = [];
   private things: Thing[] = [];
@@ -198,7 +204,7 @@ export class GameScene extends Phaser.Scene {
     this.started = false; this.waking = false; this.finished = false; this.endStats = null; this.endR = 0; this.eatenCount = 0; this.tooSmallUntil = 0;
     this.outside = false; this.seen = new Set(['house']); this.houseGone = false;
     this.catcher = null; this.catcherEaten = false; this.zoom = 1;
-    this.houses = []; this.housesEaten = 0; this.hoodsEaten = 0; this.townsEaten = 0; this.citiesEaten = 0; this.islesEaten = 0; this.mainlandEaten = 0;
+    this.houses = []; this.housesEaten = 0; this.hoodsEaten = 0; this.townsEaten = 0; this.citiesEaten = 0; this.islesEaten = 0; this.mainlandEaten = 0; this.topEaten = false;
     // One free pick as soon as the run starts.
     this.stacks = {}; this.milestone = 0; this.pendingPicks = 1; this.picking = false;
     this.streak = 0; this.lastBite = -99; this.rushT = 0;
@@ -284,6 +290,7 @@ export class GameScene extends Phaser.Scene {
     this.world.setSpace(spaceFor(this.r));
     const decals: Placed[] = level.decals.map((d) => ({ def: ITEM_BY_ID[d.id], x: d.x, y: d.y, rot: Phaser.Math.DegToRad(d.rot) }));
     for (const spot of level.furniture) this.addFurniture(spot.id, spot.x, spot.y, spot.rot);
+    this.linkTops();
     // Loose things in each part of the world, kept out of the part inside it
     w.regions.forEach((rg, i) => this.scatterItems(rg.level, i > 0 ? w.regions[i - 1].box : undefined, i === 0));
     this.world.addThings([...decals, ...this.things]);
@@ -324,6 +331,21 @@ export class GameScene extends Phaser.Scene {
     const t: Thing = { def, x, y, rot: Phaser.Math.DegToRad(rotDeg), rad: Math.min(bw, bh) / 2, box, eaten: false };
     this.boxOwner.set(box, t);
     this.addThing(t);
+  }
+
+  /** Hands each mountain and volcano out in the ocean to the island it stands on. */
+  private linkTops() {
+    const isles = this.things.filter((t) => t.box && ISLES.has(t.def.id));
+    for (const top of this.things) {
+      if (!TOPS.has(top.def.id)) continue;
+      let best: Thing | undefined;
+      for (const i of isles) {
+        const b = i.box!;
+        if (top.x < b.x || top.y < b.y || top.x > b.x + b.w || top.y > b.y + b.h) continue;
+        if (!best || i.def.size < best.def.size) best = i;
+      }
+      if (best) (best.tops ??= []).push(top);
+    }
   }
 
   private addThing(t: Thing) {
@@ -775,7 +797,7 @@ export class GameScene extends Phaser.Scene {
     } else if (name === 'island') {
       this.game.events.emit(EV.toast, `The island! Hills, forests, ports and mountains, ships out at sea, and whole cities at ${formatSize(this.cityEatR())}.`);
     } else if (name === 'ocean') {
-      this.game.events.emit(EV.toast, `The open ocean! Icebergs, fleets, atolls and even clouds are food out here. Whole islands are on the menu at ${formatSize(this.isleEatR())}.`);
+      this.game.events.emit(EV.toast, `The open ocean! Icebergs, fleets, atolls and even clouds are food out here, and so are the mountains and volcanoes on the islands. Whole islands are on the menu at ${formatSize(this.isleEatR())}.`);
     }
   }
 
@@ -909,7 +931,13 @@ export class GameScene extends Phaser.Scene {
     if (t.def.id === 'capital') this.game.events.emit(EV.toast, 'Pepper ate the capital!');
     if (isle && this.islesEaten === 1) this.game.events.emit(EV.toast, `Pepper ate a whole ${t.def.name}!`);
     if (t.def.id === 'mainland' && this.mainlandEaten === 1) this.game.events.emit(EV.toast, 'Pepper ate a whole stretch of the mainland!');
+    if (TOPS.has(t.def.id) && !this.topEaten) {
+      this.topEaten = true;
+      this.game.events.emit(EV.toast, `Pepper ate a ${t.def.name} right off an island! Whole islands are on the menu at ${formatSize(this.isleEatR())}.`);
+    }
     this.afterGrow(before);
+    // Anything still standing on an island goes down with it.
+    for (const top of t.tops ?? []) if (!top.eaten) this.eat(top);
   }
 
   /** Pepper swallows a whole house, walls, roof and all. */

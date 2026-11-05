@@ -4,6 +4,7 @@
 // across her head pokes out of the top of the sky and into space.
 
 import { PAL } from '../art/palette';
+import { ISLAND_TOPS, OCEAN_ITEMS } from '../art/oceanItems';
 import type { FurnitureSpot, Level, Pt } from './level';
 
 export const OCEAN_SIZE = 48000000;
@@ -49,6 +50,16 @@ export function buildOcean(island: { w: number; h: number }): Ocean {
   // Icebergs drift down from the north, fleets sail everywhere
   put('iceberg', 150000, 160, { zone: () => [rand(0, W), rand(0, H * 0.3)] });
   put('fleet', 125000, 100);
+  // Mountains and volcanoes on top of the islands, turned with them
+  for (const spot of [...furniture]) {
+    const tops = ISLAND_TOPS[spot.id];
+    if (!tops) continue;
+    const def = OCEAN_ITEMS.find((d) => d.id === spot.id)!;
+    const sc = def.size / Math.max(def.w, def.h), a = (spot.rot * Math.PI) / 180, c = Math.cos(a), sn = Math.sin(a);
+    for (const [id, x, z] of tops) {
+      furniture.push({ id, x: spot.x + (x * c - z * sn) * sc, y: spot.y + (x * sn + z * c) * sc, rot: spot.id === 'volcano' ? spot.rot : Math.round(rand(0, 360)) });
+    }
+  }
   // Weather, over land and sea alike
   put('hurricane', 800000, 16, { floats: true });
   put('cloud', 175000, 320, { floats: true });
