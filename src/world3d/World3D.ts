@@ -511,10 +511,6 @@ export class World3D {
     return this.ending ? this.ending.t : null;
   }
 
-  /** How far into space Pepper's head is, 0..1: the sky past the horizon fades from grass green to night. */
-  setSpace(k: number) {
-    (this.scene.background as THREE.Color).set(PAL.avocado).lerp(SPACE_SKY, k);
-  }
 
   // ---------- camera ----------
 
@@ -691,7 +687,6 @@ function chunkFor(def: ItemDef) {
   return Math.min(60000, Math.max(1500, def.size * 30));
 }
 
-const SPACE_SKY = new THREE.Color('#1c2444');
 
 let world: World3D | null = null;
 /** The one 3D view, created on first use under the given element. */

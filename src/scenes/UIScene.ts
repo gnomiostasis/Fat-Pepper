@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { PAL, hexNum } from '../art/palette';
 import { MILESTONES, POWER_BY_ID, PowerDef, PowerId, Stacks } from '../game/powerups';
-import { DOOR_R, START_R, formatSize, spaceFor } from '../game/tuning';
+import { DOOR_R, START_R, formatSize } from '../game/tuning';
 import { EV, Goal, PowerState, RunStats } from './events';
 import { touchDevice } from './joystick';
 
@@ -16,8 +16,6 @@ interface FeedLine { name: string; count: number; text: Phaser.GameObjects.Text;
 /** HUD and the start and finish cards, drawn on top of the game. */
 export class UIScene extends Phaser.Scene {
   private vignette!: Phaser.GameObjects.Image;
-  /** Night and stars round the edges, as Pepper's head rises into space. Under the HUD. */
-  private space!: Phaser.GameObjects.Image;
   private panel!: Phaser.GameObjects.Graphics;
   private sizeLabel!: Phaser.GameObjects.Text;
   private sizeText!: Phaser.GameObjects.Text;
@@ -59,10 +57,9 @@ export class UIScene extends Phaser.Scene {
     this.toastBox = this.add.container(0, 0).setAlpha(0);
 
     this.vignette = this.add.image(0, 0, 'vignette').setOrigin(0);
-    this.space = this.add.image(0, 0, 'space').setOrigin(0).setDepth(-1).setAlpha(0);
 
     const bus = this.game.events;
-    const onSize = (r: number) => { this.r = r; this.space.setAlpha(spaceFor(r)); this.drawHud(); };
+    const onSize = (r: number) => { this.r = r; this.drawHud(); };
     const onEat = (name: string) => this.addFeed(name);
     const onToast = (msg: string) => this.toast(msg);
     const onDone = (s: RunStats) => this.showFinish(s);
@@ -90,7 +87,6 @@ export class UIScene extends Phaser.Scene {
     if (on === this.hudOn && !now) return;
     this.hudOn = on;
     const parts = [this.panel, this.sizeLabel, this.sizeText, this.doorLabel, this.bar, this.nextLabel, this.chips];
-    this.space.setVisible(on);
     this.tweens.killTweensOf(parts);
     if (now) { for (const p of parts) p.setAlpha(on ? 1 : 0); return; }
     this.tweens.add({ targets: parts, alpha: on ? 1 : 0, duration: on ? 300 : 500 });
@@ -100,7 +96,6 @@ export class UIScene extends Phaser.Scene {
   private layout() {
     const { width: w, height: h } = this.scale;
     this.vignette.setDisplaySize(w, h);
-    this.space.setDisplaySize(w, h);
     this.drawHud();
     this.feed.forEach((f, i) => f.text.setPosition(20, h - 40 - i * 24));
     this.toastBox.setPosition(w / 2, 96);

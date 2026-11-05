@@ -66,9 +66,6 @@ export const SPACE_R = 1000000;
 /** Pepper's size when her head pokes out of the top of the sky (100 km across, the edge of space): the win. */
 export const WIN_R = 5000000;
 
-/** How far into space Pepper's head is: 0 under a blue sky, 1 among the stars at the win. */
-export const spaceFor = (r: number) => Math.min(1, Math.max(0, Math.log(r / SPACE_R) / Math.log(WIN_R / SPACE_R)));
-
 /**
  * How round Pepper is at each stage of the run, as [radius, fat] pairs: a little chubby leaving the house, plump
  * by the time the catcher gives up, properly round reaching the island, nearly a ball out on the ocean, and only a full ball at the edge of space.

@@ -11,7 +11,7 @@ import {
   Stacks, TONGUE, ZOOMIES, rollChoices,
 } from '../game/powerups';
 import {
-  CATCHER_EAT_R, CATCHER_R, CATCHER_RAD, catcherNet, CATCHER_SIZE, CATCHER_SPEED, DOOR_R, EAT_RATIO, GROW_K, HOUSE_BITE, ISLAND_R, OCEAN_R, SPACE_R, spaceFor, START_R, STREET_R, TOWN_R, WALL_R, WIN_R,
+  CATCHER_EAT_R, CATCHER_R, CATCHER_RAD, catcherNet, CATCHER_SIZE, CATCHER_SPEED, DOOR_R, EAT_RATIO, GROW_K, HOUSE_BITE, ISLAND_R, OCEAN_R, SPACE_R, START_R, STREET_R, TOWN_R, WALL_R, WIN_R,
   canHop, fatFor, formatSize, grownRadius, OUTDOOR_ZOOM, speedFor, viewFor,
 } from '../game/tuning';
 import { ITEMS } from '../art/items';
@@ -283,7 +283,6 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.world.build(level);
-    this.world.setSpace(spaceFor(this.r));
     const decals: Placed[] = level.decals.map((d) => ({ def: ITEM_BY_ID[d.id], x: d.x, y: d.y, rot: Phaser.Math.DegToRad(d.rot) }));
     for (const spot of level.furniture) this.addFurniture(spot.id, spot.x, spot.y, spot.rot);
     // Loose things in each part of the world, kept out of the part inside it
@@ -1020,12 +1019,11 @@ export class GameScene extends Phaser.Scene {
       this.game.events.emit(EV.toast, 'Pepper can eat whole islands now!');
     }
     if (passed(SPACE_R)) {
-      this.game.events.emit(EV.toast, 'Pepper\'s head is up above the clouds, and the sky is getting dark. Keep growing: space is up there!');
+      this.game.events.emit(EV.toast, 'Pepper\'s head is up above the clouds. Keep growing: space is up there!');
     }
     if (this.mainlandEaten === 0 && passed(mainR)) {
       this.game.events.emit(EV.toast, 'Pepper can eat the mainland now! One more big meal and she\'ll be in space.');
     }
-    this.world.setSpace(spaceFor(this.r));
     if (this.outside) this.emitGoal();
     if (this.r >= WIN_R) { this.endRun('won'); return; }
     if (this.n('streak') && this.streak >= 3 && this.streak % 3 === 0) {
