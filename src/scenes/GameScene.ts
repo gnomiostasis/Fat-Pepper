@@ -7,7 +7,7 @@ import type { Box, Level, Pt, Seg } from '../game/level';
 import { Tiers } from '../game/grid';
 import { Region, RegionName, World, buildWorld } from '../game/world';
 import {
-  APPETITE, JAWS, MILESTONES, POWER_BY_ID, PowerId, RUSH, RUSH_TIME, STREAK, STREAK_CAP, STREAK_GAP,
+  APPETITE, JAWS, POWER_BY_ID, PowerId, RUSH, RUSH_TIME, STREAK, STREAK_CAP, STREAK_GAP,
   Stacks, TONGUE, ZOOMIES, rollChoices,
 } from '../game/powerups';
 import {
@@ -181,9 +181,9 @@ export class GameScene extends Phaser.Scene {
 
   // ---- roguelike powerups ----
   private stacks: Stacks = {};
-  /** Index of the next size milestone in MILESTONES. */
-  private milestone = 0;
-  /** Milestones passed but not picked yet (a big bite can pass two). */
+  /** Size thresholds (see thresholds()) that have already given Pepper a pick. */
+  private credited = new Set<string>();
+  /** Picks earned but not taken yet: the one at the start, then one per threshold (a big bite can pass two). */
   private pendingPicks = 0;
   /** The game is paused while the player picks a powerup. */
   private picking = false;
@@ -208,7 +208,7 @@ export class GameScene extends Phaser.Scene {
     this.catcher = null; this.catcherEaten = false; this.zoom = 1;
     this.houses = []; this.housesEaten = 0; this.hoodsEaten = 0; this.townsEaten = 0; this.citiesEaten = 0; this.islesEaten = 0; this.mainlandEaten = 0; this.topEaten = false;
     // One free pick as soon as the run starts.
-    this.stacks = {}; this.milestone = 0; this.pendingPicks = 1; this.picking = false;
+    this.stacks = {}; this.credited.clear(); this.pendingPicks = 1; this.picking = false;
     this.streak = 0; this.lastBite = -99; this.rushT = 0;
 
     // The level is drawn in 3D underneath; this scene keeps the rules and the comic pops.
@@ -297,6 +297,19 @@ export class GameScene extends Phaser.Scene {
     this.world.addThings([...decals, ...this.things]);
     this.world.follow(this.x, this.y, this.viewCm(), 0, true);
     this.renderDog(0);
+  }
+
+  /**
+   * The size thresholds on the HUD's goal bar, each worth one powerup pick the first time Pepper reaches it.
+   * Reaching space ends the run, so it isn't one.
+   */
+  private thresholds(): [string, number][] {
+    return [
+      ['door', DOOR_R], ['catcher', CATCHER_R], ['catcher-eat', this.catcherEatR()],
+      ['houses', this.houseEatR()], ['hoods', this.hoodEatR()], ['towns', this.townEatR()],
+      ['island', ISLAND_R], ['cities', this.cityEatR()], ['ocean', OCEAN_R],
+      ['isles', this.isleEatR()], ['mainland', this.mainlandEatR()],
+    ];
   }
 
   /** Tells the HUD what Pepper is growing toward right now. */
@@ -853,7 +866,7 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  /** Pepper passed a size milestone: pause and offer three powerups. */
+  /** A pick is waiting (the start of a run, or a new size threshold): pause and offer three powerups. */
   private offerPowers() {
     const choices = rollChoices(this.stacks);
     if (!choices.length) { this.pendingPicks = 0; return; }
@@ -877,7 +890,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private emitPowers() {
-    const s: PowerState = { stacks: { ...this.stacks }, next: MILESTONES[this.milestone] ?? null };
+    const left = this.thresholds().filter(([k]) => !this.credited.has(k)).map(([, r]) => r);
+    const s: PowerState = { stacks: { ...this.stacks }, next: left.length ? Math.min(...left) : null };
     this.game.events.emit(EV.powers, s);
   }
 
@@ -1010,7 +1024,7 @@ export class GameScene extends Phaser.Scene {
     this.afterGrow(before);
   }
 
-  /** Everything that follows a bite: HUD, size toasts, powerup milestones, the next goal, the win. */
+  /** Everything that follows a bite: HUD, size toasts, powerup picks, the next goal, the win. */
   private afterGrow(before: number) {
     this.game.events.emit(EV.size, this.r);
     if (before < DOOR_R && this.r >= DOOR_R) {
@@ -1057,8 +1071,10 @@ export class GameScene extends Phaser.Scene {
     if (this.n('streak') && this.streak >= 3 && this.streak % 3 === 0) {
       this.game.events.emit(EV.toast, `Munch streak ×${this.streak}!`);
     }
-    while (this.milestone < MILESTONES.length && this.r >= MILESTONES[this.milestone]) {
-      this.milestone++;
+    // A powerup pick for each new threshold Pepper reaches, and at no other time.
+    for (const [k, r] of this.thresholds()) {
+      if (this.credited.has(k) || this.r < r) continue;
+      this.credited.add(k);
       this.pendingPicks++;
     }
     if (this.pendingPicks) this.emitPowers();

@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { PAL, hexNum } from '../art/palette';
-import { MILESTONES, POWER_BY_ID, PowerDef, PowerId, Stacks } from '../game/powerups';
+import { POWER_BY_ID, PowerDef, PowerId, Stacks } from '../game/powerups';
 import { DOOR_R, START_R, formatSize } from '../game/tuning';
 import { EV, Goal, PowerState, RunStats } from './events';
 import { touchDevice } from './joystick';
@@ -26,7 +26,7 @@ export class UIScene extends Phaser.Scene {
   private feed: FeedLine[] = [];
   private r = START_R;
   private goal: Goal = { from: START_R, to: DOOR_R, label: 'Dog door at', reached: 'Dog door: OPEN!' };
-  private powers: PowerState = { stacks: {}, next: MILESTONES[0] };
+  private powers: PowerState = { stacks: {}, next: DOOR_R };
   private nextLabel!: Phaser.GameObjects.Text;
   private chips!: Phaser.GameObjects.Container;
   private picker?: Phaser.GameObjects.Container;
@@ -41,7 +41,7 @@ export class UIScene extends Phaser.Scene {
     this.feed = [];
     this.r = START_R;
     this.goal = { from: START_R, to: DOOR_R, label: 'Dog door at', reached: 'Dog door: OPEN!' };
-    this.powers = { stacks: {}, next: MILESTONES[0] };
+    this.powers = { stacks: {}, next: DOOR_R };
     this.picker = undefined;
     this.hudOn = false;
 

@@ -14,7 +14,7 @@ export const EV = {
   done: 'fp-done',
   /** game → HUD: what Pepper is growing toward now; payload is Goal. */
   goal: 'fp-goal',
-  /** game → HUD: Pepper hit a size milestone; payload is the PowerDef[] to choose from. */
+  /** game → HUD: Pepper started a run or reached a new size threshold; payload is the PowerDef[] to choose from. */
   offer: 'fp-offer',
   /** HUD → game: the player picked a powerup; payload is its PowerId. */
   pick: 'fp-pick',
