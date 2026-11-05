@@ -44,6 +44,8 @@ export interface RunStats {
   towns: number;
   /** Whole cities Pepper ate on the island. */
   cities: number;
+  /** Whole islands (and stretches of mainland) Pepper ate out in the ocean. */
+  islands: number;
   r: number;
   stacks: Stacks;
 }

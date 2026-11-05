@@ -31,7 +31,7 @@ export function formatSize(r: number) {
   const cm = r * 2;
   if (cm < 100) return `${cm.toFixed(cm < 20 ? 1 : 0)} cm`;
   const m = cm / 100;
-  if (m >= 1000) return `${(m / 1000).toFixed(2)} km`;
+  if (m >= 1000) { const km = m / 1000; return `${km.toFixed(km < 10 ? 2 : km < 100 ? 1 : 0)} km`; }
   return `${m.toFixed(m < 10 ? 2 : m < 100 ? 1 : 0)} m`;
 }
 
@@ -57,14 +57,21 @@ export const TOWN_R = 700;
 export const STREET_R = 1100;
 /** Pepper's size when she has outgrown the countryside, and the island is where the food is. */
 export const ISLAND_R = 40000;
-/** Pepper's size when she has eaten enough of the island to win the run (6.4 km across). */
-export const WIN_R = 320000;
+/** Pepper's size when she has outgrown the island (6.4 km across), and the open ocean is where the food is. */
+export const OCEAN_R = 320000;
+/** Pepper's size when her head is up above the clouds (20 km across), and the sky starts to darken. */
+export const SPACE_R = 1000000;
+/** Pepper's size when her head pokes out of the top of the sky (100 km across, the edge of space): the win. */
+export const WIN_R = 5000000;
+
+/** How far into space Pepper's head is: 0 under a blue sky, 1 among the stars at the win. */
+export const spaceFor = (r: number) => Math.min(1, Math.max(0, Math.log(r / SPACE_R) / Math.log(WIN_R / SPACE_R)));
 
 /**
  * How round Pepper is at each stage of the run, as [radius, fat] pairs: a little chubby leaving the house, plump
- * by the time the catcher gives up, properly round reaching the island, and only a full ball at the very end.
+ * by the time the catcher gives up, properly round reaching the island, nearly a ball out on the ocean, and only a full ball at the edge of space.
  */
-const FAT_STEPS: [number, number][] = [[START_R, 0], [DOOR_R, 0.2], [TOWN_R, 0.45], [ISLAND_R, 0.8], [WIN_R, 1]];
+const FAT_STEPS: [number, number][] = [[START_R, 0], [DOOR_R, 0.2], [TOWN_R, 0.45], [ISLAND_R, 0.8], [OCEAN_R, 0.9], [WIN_R, 1]];
 
 /** 0 = skinny puppy, 1 = a ball. Eases up through each stage of the run (in log size) so she never maxes out early. */
 export function fatFor(r: number) {

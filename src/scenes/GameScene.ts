@@ -11,7 +11,7 @@ import {
   Stacks, TONGUE, ZOOMIES, rollChoices,
 } from '../game/powerups';
 import {
-  CATCHER_R, CATCHER_RAD, CATCHER_SIZE, CATCHER_SPEED, DOOR_R, EAT_RATIO, GROW_K, HOUSE_BITE, ISLAND_R, START_R, STREET_R, TOWN_R, WALL_R, WIN_R,
+  CATCHER_R, CATCHER_RAD, CATCHER_SIZE, CATCHER_SPEED, DOOR_R, EAT_RATIO, GROW_K, HOUSE_BITE, ISLAND_R, OCEAN_R, SPACE_R, spaceFor, START_R, STREET_R, TOWN_R, WALL_R, WIN_R,
   canHop, fatFor, formatSize, grownRadius, OUTDOOR_ZOOM, speedFor, viewFor,
 } from '../game/tuning';
 import { ITEMS } from '../art/items';
@@ -47,6 +47,8 @@ const HOODS = new Set(['hood', 'hoodrow']);
 const TOWNS = new Set(['smalltown', 'bigtown']);
 /** Things on the island that count as a whole city. */
 const CITIES = new Set(['city', 'capital']);
+/** Things out in the ocean that count as a whole island. */
+const ISLES = new Set(['isle', 'bigisle', 'volcano', 'mainland']);
 
 /** The dog catcher, once he's on Pepper's trail. */
 interface Catcher {
@@ -109,6 +111,8 @@ export class GameScene extends Phaser.Scene {
   private hoodsEaten = 0;
   private townsEaten = 0;
   private citiesEaten = 0;
+  private islesEaten = 0;
+  private mainlandEaten = 0;
   /** Building edges, solid like walls but drawn as part of the building. */
   private buildingPolys: Pt[][] = [];
   private things: Thing[] = [];
@@ -174,7 +178,7 @@ export class GameScene extends Phaser.Scene {
     this.started = false; this.finished = false; this.eatenCount = 0; this.tooSmallUntil = 0;
     this.outside = false; this.seen = new Set(['house']); this.houseGone = false;
     this.catcher = null; this.catcherEaten = false; this.zoom = 1;
-    this.houses = []; this.housesEaten = 0; this.hoodsEaten = 0; this.townsEaten = 0; this.citiesEaten = 0;
+    this.houses = []; this.housesEaten = 0; this.hoodsEaten = 0; this.townsEaten = 0; this.citiesEaten = 0; this.islesEaten = 0; this.mainlandEaten = 0;
     // One free pick as soon as the run starts.
     this.stacks = {}; this.milestone = 0; this.pendingPicks = 1; this.picking = false;
     this.furLeft = 0; this.safeT = 0; this.streak = 0; this.lastBite = -99; this.rushT = 0;
@@ -242,6 +246,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.world.build(level);
+    this.world.setSpace(spaceFor(this.r));
     const decals: Placed[] = level.decals.map((d) => ({ def: ITEM_BY_ID[d.id], x: d.x, y: d.y, rot: Phaser.Math.DegToRad(d.rot) }));
     for (const spot of level.furniture) this.addFurniture(spot.id, spot.x, spot.y, spot.rot);
     // Loose things in each part of the world, kept out of the part inside it
@@ -255,6 +260,7 @@ export class GameScene extends Phaser.Scene {
   private emitGoal() {
     let goal: Goal;
     const houseR = this.houseEatR(), hoodR = this.hoodEatR(), townR = this.townEatR(), cityR = this.cityEatR();
+    const isleR = this.isleEatR(), mainR = this.mainlandEatR();
     if (!this.outside) goal = { from: START_R, to: DOOR_R, label: 'Dog door at', reached: 'Dog door: OPEN!' };
     else if (!this.catcher && !this.catcherEaten) goal = { from: DOOR_R, to: CATCHER_R, label: 'Dog catcher alert at', reached: 'The dog catcher is coming!' };
     else if (!this.catcherEaten) goal = { from: CATCHER_R, to: this.catcherEatR(), label: 'Eat the catcher at', reached: 'Eat the dog catcher!' };
@@ -263,7 +269,10 @@ export class GameScene extends Phaser.Scene {
     else if (this.r < townR && this.townsEaten === 0) goal = { from: Math.min(hoodR, this.r), to: townR, label: 'Eat towns at', reached: 'Whole towns are on the menu!' };
     else if (this.r < ISLAND_R) goal = { from: Math.min(townR, this.r), to: ISLAND_R, label: 'Outgrow the countryside at', reached: 'Off to the island!' };
     else if (this.r < cityR && this.citiesEaten === 0) goal = { from: ISLAND_R, to: cityR, label: 'Eat cities at', reached: 'Whole cities are on the menu!' };
-    else goal = { from: Math.min(Math.max(cityR, ISLAND_R), this.r), to: WIN_R, label: 'Eat the island at', reached: 'Pepper ate the island!' };
+    else if (this.r < OCEAN_R) goal = { from: Math.min(Math.max(cityR, ISLAND_R), this.r), to: OCEAN_R, label: 'Outgrow the island at', reached: 'Out to sea!' };
+    else if (this.r < isleR && this.islesEaten === 0) goal = { from: OCEAN_R, to: isleR, label: 'Eat whole islands at', reached: 'Whole islands are on the menu!' };
+    else if (this.r < mainR && this.mainlandEaten === 0) goal = { from: Math.min(Math.max(isleR, OCEAN_R), this.r), to: mainR, label: 'Eat the mainland at', reached: 'The mainland is on the menu!' };
+    else goal = { from: Math.min(Math.max(mainR, OCEAN_R), this.r), to: WIN_R, label: 'Reach space at', reached: 'Pepper reached space!' };
     this.game.events.emit(EV.goal, goal);
   }
 
@@ -455,7 +464,12 @@ export class GameScene extends Phaser.Scene {
       const id = this.boxOwner.get(b)?.def.id ?? '';
       if (overAll) {
         // Striding over a whole neighborhood or town: say when she'll be able to eat one.
-        if (time > this.tooSmallUntil && (HOODS.has(id) || TOWNS.has(id) || CITIES.has(id))) {
+        if (time > this.tooSmallUntil && ISLES.has(id) && !this.canEat(this.boxOwner.get(b)!.def.size)) {
+          this.tooSmallUntil = time + 6000;
+          this.game.events.emit(EV.toast, id === 'mainland'
+            ? `Pepper can gulp down the mainland at ${formatSize(this.mainlandEatR())}.`
+            : `Pepper can gulp a whole island at ${formatSize(this.isleEatR())}.`);
+        } else if (time > this.tooSmallUntil && (HOODS.has(id) || TOWNS.has(id) || CITIES.has(id))) {
           this.tooSmallUntil = time + 6000;
           this.game.events.emit(EV.toast, HOODS.has(id)
             ? `Pepper can gulp a whole neighborhood at ${formatSize(this.hoodEatR())}.`
@@ -583,6 +597,20 @@ export class GameScene extends Phaser.Scene {
   /** Pepper's size when she can eat the smallest city still standing on the island, with Big Jaws counted. */
   private cityEatR() {
     const left = this.things.filter((t) => !t.eaten && CITIES.has(t.def.id));
+    if (!left.length) return this.isleEatR();
+    return Math.min(...left.map((t) => t.def.size)) / (EAT_RATIO + JAWS * this.n('jaws'));
+  }
+
+  /** Pepper's size when she can eat the smallest island still out in the ocean, with Big Jaws counted. */
+  private isleEatR() {
+    const left = this.things.filter((t) => !t.eaten && ISLES.has(t.def.id) && t.def.id !== 'mainland');
+    if (!left.length) return this.mainlandEatR();
+    return Math.min(...left.map((t) => t.def.size)) / (EAT_RATIO + JAWS * this.n('jaws'));
+  }
+
+  /** Pepper's size when she can eat a stretch of the mainland, with Big Jaws counted. */
+  private mainlandEatR() {
+    const left = this.things.filter((t) => !t.eaten && t.def.id === 'mainland');
     if (!left.length) return WIN_R;
     return Math.min(...left.map((t) => t.def.size)) / (EAT_RATIO + JAWS * this.n('jaws'));
   }
@@ -610,6 +638,8 @@ export class GameScene extends Phaser.Scene {
       this.game.events.emit(EV.toast, `The countryside! Farms, forests and castles are all food out here. Whole towns are on the menu at ${formatSize(this.townEatR())}.`);
     } else if (name === 'island') {
       this.game.events.emit(EV.toast, `The island! Hills, forests, ports and mountains, ships out at sea, and whole cities at ${formatSize(this.cityEatR())}.`);
+    } else if (name === 'ocean') {
+      this.game.events.emit(EV.toast, `The open ocean! Icebergs, fleets, atolls and even clouds are food out here. Whole islands are on the menu at ${formatSize(this.isleEatR())}.`);
     }
   }
 
@@ -721,7 +751,10 @@ export class GameScene extends Phaser.Scene {
     const town = TOWNS.has(t.def.id), city = CITIES.has(t.def.id);
     if (town) this.townsEaten++;
     if (city) this.citiesEaten++;
-    const hood = HOODS.has(t.def.id) || town || city;
+    const isle = ISLES.has(t.def.id);
+    if (isle) this.islesEaten++;
+    if (t.def.id === 'mainland') this.mainlandEaten++;
+    const hood = HOODS.has(t.def.id) || town || city || isle;
     if (HOODS.has(t.def.id)) this.hoodsEaten++;
     if (t.def.name === 'house') this.housesEaten++;
     this.grow(grownRadius(this.r, t.def.size) ** 2 - this.r * this.r);
@@ -739,6 +772,8 @@ export class GameScene extends Phaser.Scene {
     if (town && this.townsEaten === 1) this.game.events.emit(EV.toast, 'Pepper ate a whole town!');
     if (city && this.citiesEaten === 1) this.game.events.emit(EV.toast, 'Pepper ate a whole city!');
     if (t.def.id === 'capital') this.game.events.emit(EV.toast, 'Pepper ate the capital!');
+    if (isle && this.islesEaten === 1) this.game.events.emit(EV.toast, `Pepper ate a whole ${t.def.name}!`);
+    if (t.def.id === 'mainland' && this.mainlandEaten === 1) this.game.events.emit(EV.toast, 'Pepper ate a whole stretch of the mainland!');
     this.afterGrow(before);
   }
 
@@ -803,6 +838,7 @@ export class GameScene extends Phaser.Scene {
     // Size goals, wherever Pepper is
     const passed = (at: number) => before < at && this.r >= at;
     const houseR = this.houseEatR(), hoodR = this.hoodEatR(), townR = this.townEatR(), cityR = this.cityEatR();
+    const isleR = this.isleEatR(), mainR = this.mainlandEatR();
     if (this.outside && this.housesEaten === 0 && passed(houseR)) {
       this.game.events.emit(EV.toast, 'Pepper is big enough to eat houses, fences, everything! Go chomp.');
     }
@@ -821,6 +857,19 @@ export class GameScene extends Phaser.Scene {
     if (this.citiesEaten === 0 && passed(cityR)) {
       this.game.events.emit(EV.toast, 'Pepper can eat whole cities now! The biggest is the capital.');
     }
+    if (passed(OCEAN_R)) {
+      this.game.events.emit(EV.toast, 'Pepper has outgrown the island! Wade out into the ocean: there are more islands out there, and the mainland beyond.');
+    }
+    if (this.islesEaten === 0 && passed(isleR)) {
+      this.game.events.emit(EV.toast, 'Pepper can eat whole islands now!');
+    }
+    if (passed(SPACE_R)) {
+      this.game.events.emit(EV.toast, 'Pepper\'s head is up above the clouds, and the sky is getting dark. Keep growing: space is up there!');
+    }
+    if (this.mainlandEaten === 0 && passed(mainR)) {
+      this.game.events.emit(EV.toast, 'Pepper can eat the mainland now! One more big meal and she\'ll be in space.');
+    }
+    this.world.setSpace(spaceFor(this.r));
     if (this.outside) this.emitGoal();
     if (this.r >= WIN_R) { this.endRun('won'); return; }
     if (this.n('streak') && this.streak >= 3 && this.streak % 3 === 0) {
@@ -888,7 +937,7 @@ export class GameScene extends Phaser.Scene {
   private endRun(outcome: RunStats['outcome']) {
     this.finished = true;
     const stats: RunStats = {
-      outcome, seconds: (this.time.now - this.startTime) / 1000, eaten: this.eatenCount, houses: this.housesEaten, hoods: this.hoodsEaten, towns: this.townsEaten, cities: this.citiesEaten,
+      outcome, seconds: (this.time.now - this.startTime) / 1000, eaten: this.eatenCount, houses: this.housesEaten, hoods: this.hoodsEaten, towns: this.townsEaten, cities: this.citiesEaten, islands: this.islesEaten,
       r: this.r, stacks: { ...this.stacks },
     };
     this.time.delayedCall(1100, () => this.game.events.emit(EV.done, stats));

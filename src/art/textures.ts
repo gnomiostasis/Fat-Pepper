@@ -199,6 +199,21 @@ function overlayTextures(scene: Phaser.Scene) {
     ctx.fillStyle = v; ctx.fillRect(0, 0, N, N);
     scene.textures.addCanvas('vignette', c);
   }
+  // Space closing in round the edges of the screen as Pepper's head rises out of the sky: night blue
+  // and stars, clear in the middle so the world below still shows
+  {
+    const N = 1024, { c, ctx } = canvas(N, N), r = rng(61);
+    const v = ctx.createRadialGradient(N / 2, N / 2, N * 0.22, N / 2, N / 2, N * 0.7);
+    v.addColorStop(0, 'rgba(28,36,68,0)'); v.addColorStop(0.45, 'rgba(28,36,68,0.55)'); v.addColorStop(1, 'rgba(20,26,52,0.97)');
+    ctx.fillStyle = v; ctx.fillRect(0, 0, N, N);
+    for (let i = 0; i < 420; i++) {
+      const x = r() * N, y = r() * N, d = Math.hypot(x - N / 2, y - N / 2) / (N / 2);
+      if (d < 0.5) continue;
+      ctx.fillStyle = `rgba(255,250,235,${Math.min(1, (d - 0.5) * 1.6) * (0.5 + r() * 0.5)})`;
+      ctx.beginPath(); ctx.arc(x, y, 0.8 + r() * 1.6, 0, Math.PI * 2); ctx.fill();
+    }
+    scene.textures.addCanvas('space', c);
+  }
   // Soft starbursts for big bites
   CHOMP_WORDS.forEach((word, i) => {
     const W = 260, H = 170, { c, ctx } = canvas(W, H), n = 14;

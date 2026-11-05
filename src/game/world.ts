@@ -1,7 +1,8 @@
 // The whole game is one world, laid out fresh each run: Pepper's house sits on a lot in the
 // neighborhood, the neighborhood sits on the west edge of the market town (its main road carries on as
 // the high street), the town sits in the middle of the countryside on the motorway, and the countryside
-// sits in the middle of an island, its motorway running on to the cities and its rivers to the sea. Each part is
+// sits in the middle of an island, its motorway running on to the cities and its rivers to the sea, and the
+// island sits in the open ocean among other islands and the mainland. Each part is
 // built in its own coordinates and drawn at its own scale, then they're fitted together here, with
 // Pepper's house at the origin.
 
@@ -12,8 +13,9 @@ import { buildNeighborhood } from './neighborhood';
 import { buildTown } from './town';
 import { buildCountry } from './country';
 import { buildIsland } from './island';
+import { buildOcean } from './ocean';
 
-export type RegionName = 'house' | 'hood' | 'town' | 'country' | 'island';
+export type RegionName = 'house' | 'hood' | 'town' | 'country' | 'island' | 'ocean';
 
 /** One part of the world, already moved into place. */
 export interface Region {
@@ -29,7 +31,7 @@ export interface Region {
 export interface World {
   /** Everything in one level, for drawing and for bumping into. */
   level: Level;
-  /** From the inside out: the house, the neighborhood, the town, the countryside, the island. */
+  /** From the inside out: the house, the neighborhood, the town, the countryside, the island, the ocean. */
   regions: Region[];
 }
 
@@ -66,9 +68,11 @@ export function buildWorld(): World {
   const town = buildTown({ w: hood.level.bounds.w, h: hood.level.bounds.h, west: hood.west, east: hood.east });
   const country = buildCountry({ w: town.level.bounds.w, h: town.level.bounds.h, west: town.west, east: town.east });
   const island = buildIsland({ w: country.level.bounds.w, h: country.level.bounds.h, west: country.west, east: country.east, rivers: country.rivers });
+  const ocean = buildOcean({ w: island.level.bounds.w, h: island.level.bounds.h });
 
   // Where each part's own origin lands, with the house's at 0,0
-  const countryAt = island.countryAt;
+  const islandAt = ocean.islandAt;
+  const countryAt = move(islandAt, ...island.countryAt);
   const townAt = move(countryAt, ...country.townAt);
   const hoodAt = move(townAt, ...town.hoodAt);
   const houseAt = move(hoodAt, ...hood.homeAt);
@@ -78,13 +82,14 @@ export function buildWorld(): World {
     ['hood', hood.level, at(hoodAt) as Pt, 1],
     ['town', town.level, at(townAt) as Pt, town.level.tile ?? 1],
     ['country', country.level, at(countryAt) as Pt, country.level.tile ?? 1],
-    ['island', island.level, at([0, 0]) as Pt, island.level.tile ?? 1],
+    ['island', island.level, at(islandAt) as Pt, island.level.tile ?? 1],
+    ['ocean', ocean.level, at([0, 0]) as Pt, ocean.level.tile ?? 1],
   ];
   const regions: Region[] = parts.map(([name, l, [dx, dy], tile]) => {
     const level = shift(l, dx, dy);
     return { name, level, tile, box: level.bounds };
   });
-  const [H, N, T, C, I] = regions.map((r) => r.level);
+  const [H, N, T, C, I, O] = regions.map((r) => r.level);
 
   // House walls keep their own look among the yard fences. The front door is just more wall to eat.
   const houseWalls = H.walls.map((s) => ({ ...s, color: H.wallStyle.color, h: H.wallStyle.height }));
@@ -93,7 +98,7 @@ export function buildWorld(): World {
   const tiled = <T extends object>(list: T[], tile: number) => list.map((f) => ({ ...f, tile }));
 
   const level: Level = {
-    bounds: I.bounds,
+    bounds: O.bounds,
     walls: [...houseWalls, ...N.walls],
     wallStyle: N.wallStyle,
     counters: H.counters,
@@ -101,7 +106,7 @@ export function buildWorld(): World {
     buildings: N.buildings,
     floors: [...tiled(I.floors, regions[4].tile), ...tiled(C.floors, regions[3].tile), ...tiled(T.floors, regions[2].tile), ...tiled(N.floors, 1), ...H.floors],
     marks: [...tiled(T.marks, regions[2].tile), ...tiled(N.marks, 1)],
-    furniture: [...H.furniture, ...N.furniture, ...T.furniture, ...C.furniture, ...I.furniture],
+    furniture: [...H.furniture, ...N.furniture, ...T.furniture, ...C.furniture, ...I.furniture, ...O.furniture],
     decals: H.decals,
     rooms: [],
     doorways: H.doorways,
