@@ -300,15 +300,14 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * The size thresholds on the HUD's goal bar, each worth one powerup pick the first time Pepper reaches it.
+   * The size thresholds on the HUD's goal bar that are each worth one powerup pick the first time Pepper reaches it.
    * Reaching space ends the run, so it isn't one.
    */
   private thresholds(): [string, number][] {
+    // Only the big steps count, about every other goal, so picks stay a treat: five plus the one at the start.
     return [
-      ['door', DOOR_R], ['catcher', CATCHER_R], ['catcher-eat', this.catcherEatR()],
-      ['houses', this.houseEatR()], ['hoods', this.hoodEatR()], ['towns', this.townEatR()],
-      ['island', ISLAND_R], ['cities', this.cityEatR()], ['ocean', OCEAN_R],
-      ['isles', this.isleEatR()], ['mainland', this.mainlandEatR()],
+      ['door', DOOR_R], ['catcher-eat', this.catcherEatR()], ['towns', this.townEatR()],
+      ['island', ISLAND_R], ['ocean', OCEAN_R],
     ];
   }
 
