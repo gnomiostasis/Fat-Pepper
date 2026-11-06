@@ -163,8 +163,12 @@ export class UIScene extends Phaser.Scene {
     // A short pause so a held key or tap from playing doesn't pick by accident.
     let done = false;
     const shownAt = performance.now();
+    const ready = () => performance.now() - shownAt >= 450;
+    // A tap only counts if it both starts and ends on the same card after the picker is up, so a thumb
+    // already resting on the screen (on the joystick, say) can't pick a card when it lifts.
+    const armed = new Map<number, number>();
     const pick = (i: number) => {
-      if (done || !choices[i] || performance.now() - shownAt < 450) return;
+      if (done || !choices[i] || !ready()) return;
       done = true;
       this.input.keyboard!.off('keydown', onKey);
       const chosen = cards[i];
@@ -195,7 +199,12 @@ export class UIScene extends Phaser.Scene {
       card.setData('parts', { g, icon, name, lvl, blurb, key, hit, def });
       hit.on('pointerover', () => this.tweens.add({ targets: card, y: card.getData('y') - 6, duration: 100 }));
       hit.on('pointerout', () => this.tweens.add({ targets: card, y: card.getData('y'), duration: 100 }));
-      hit.on('pointerup', () => pick(i));
+      hit.on('pointerdown', (p: Phaser.Input.Pointer) => { if (ready()) armed.set(p.id, i); else armed.delete(p.id); });
+      hit.on('pointerup', (p: Phaser.Input.Pointer) => {
+        const ok = armed.get(p.id) === i;
+        armed.delete(p.id);
+        if (ok) pick(i);
+      });
       c.add(card);
       return card;
     });
