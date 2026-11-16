@@ -33,7 +33,7 @@ export interface PowerState {
 
 export interface RunStats {
   /** How the run ended. */
-  outcome: 'caught' | 'won';
+  outcome: 'caught' | 'eaten' | 'won';
   seconds: number;
   eaten: number;
   /** Houses Pepper ate. */

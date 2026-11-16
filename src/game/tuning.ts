@@ -84,3 +84,22 @@ export function fatFor(r: number) {
   }
   return 1;
 }
+
+// ---- Phase 3½: the big red Aussie ----
+/** Seconds after the dog catcher is dealt with before the Aussie shows up. */
+export const SHEP_DELAY = 4;
+/** He shows up this many times as big as Pepper. */
+export const SHEP_START = 1.45;
+/** He gets bigger as the chase goes on, adding this much to his radius² every second (cm²/s) on top of what he eats. */
+export const SHEP_GROW = 1000;
+/** His running pace, as a share of Pepper's top speed without powerups: she can outrun him, just. */
+export const SHEP_PACE = 0.72;
+/** His pounce: how much faster, for how long, and how long until the next one (seconds). He pants a moment after each. */
+export const SHEP_POUNCE = 1.7;
+export const SHEP_POUNCE_T = 0.4;
+export const SHEP_POUNCE_COOL = 3.2;
+export const SHEP_PANT_T = 0.9;
+/** Pepper has outgrown him once she's this much bigger than him: he tucks his bobtail and runs, and she can eat him. */
+export const SHEP_OUTGROW = 1.05;
+/** Running scared, he's this much slower than she is. */
+export const SHEP_FLEE_PACE = 0.72;

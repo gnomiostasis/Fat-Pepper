@@ -313,7 +313,7 @@ export class UIScene extends Phaser.Scene {
   private showStart() {
     this.showCard(
       'Fat Pepper',
-      'Pepper is a tiny puppy with a big appetite. Eat anything smaller than you, grow big enough to jump out the dog door, then keep going: the neighborhood, the town, the countryside, the island and the ocean are all out there, one big world to eat, all the way up to space. Every few sizes you pick a powerup, and they stack. Watch out for the dog catcher!',
+      'Pepper is a tiny puppy with a big appetite. Eat anything smaller than you, grow big enough to jump out the dog door, then keep going: the neighborhood, the town, the countryside, the island and the ocean are all out there, one big world to eat, all the way up to space. Every few sizes you pick a powerup, and they stack. Watch out for the dog catcher, and for the big red Aussie after him!',
       touchDevice()
         ? 'Put your thumb down anywhere and drag to steer Pepper. Drag further to run faster. Keyboards: arrow keys or WASD.'
         : 'Move with the arrow keys or WASD, or hold the mouse where Pepper should go.',
@@ -330,12 +330,17 @@ export class UIScene extends Phaser.Scene {
     const towns = `${s.towns} whole town${s.towns === 1 ? '' : 's'}`;
     const cities = `${s.cities} whole cit${s.cities === 1 ? 'y' : 'ies'}`;
     const isles = `${s.islands} whole island${s.islands === 1 ? '' : 's'}`;
+    const gobbled = s.outcome === 'eaten';
     this.showCard(
-      won ? 'Pepper ate the world!' : 'Gotcha!',
+      won ? 'Pepper ate the world!' : gobbled ? 'Chomp!' : 'Gotcha!',
       won
         ? `${formatSize(s.r)} of very good dog. She ate ${s.eaten} things in ${m}:${sec}, including ${houses}, ${hoods}, ${towns}, ${cities} and ${isles}.`
-        : `The dog catcher netted Pepper at ${formatSize(s.r)}, after she ate ${s.eaten} things in ${m}:${sec}. Off to the pound!`,
-      this.buildLine(s.stacks) || (won ? 'Not a crumb left. Or was it all a dream?' : 'Keep moving and keep eating: he speeds up as you grow.'),
+        : gobbled
+          ? `The big red Aussie gobbled Pepper up at ${formatSize(s.r)}, after she ate ${s.eaten} things in ${m}:${sec}.`
+          : `The dog catcher netted Pepper at ${formatSize(s.r)}, after she ate ${s.eaten} things in ${m}:${sec}. Off to the pound!`,
+      this.buildLine(s.stacks) || (won ? 'Not a crumb left. Or was it all a dream?'
+        : gobbled ? 'Keep running and keep eating: he pants after every pounce, and he keeps growing too.'
+          : 'Keep moving and keep eating: he speeds up as you grow.'),
       won ? 'Play again' : 'Try again',
       () => {
         this.scene.get('game').scene.restart();
