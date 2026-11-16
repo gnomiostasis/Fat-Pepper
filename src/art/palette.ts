@@ -34,6 +34,11 @@ export const PAL = {
   dogWhite: '#fbfaf6',
   collar: '#e0685f',
   tag: '#f6d77a',
+
+  // The big red Australian Shepherd who chases her: a red tri, copper-red with white and copper points
+  aussieRed: '#c4704f',
+  aussieCopper: '#eda774',
+  aussieCollar: '#6fa9d6',
 };
 
 function hx(c: string): [number, number, number] {

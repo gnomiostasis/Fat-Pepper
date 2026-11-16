@@ -58,6 +58,8 @@ export class World3D {
   private overlayCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
   private screenTarget: THREE.WebGLRenderTarget | null = null;
   readonly catcher = new Catcher3D();
+  /** The fat red Australian Shepherd who chases Pepper after the dog catcher, trying to eat her. */
+  readonly shepherd = new Dog3D({ base: PAL.aussieRed, white: PAL.dogWhite, collar: PAL.aussieCollar, tag: PAL.tag, points: PAL.aussieCopper, tail: 0.35 });
   private scene = new THREE.Scene();
   private camera = new THREE.PerspectiveCamera(FOV, 1, 1, 10000);
   private sun = new THREE.DirectionalLight(0xffffff, 1.2);
@@ -78,7 +80,7 @@ export class World3D {
   /** The grass under everything, following the camera. */
   private grass: THREE.Mesh | null = null;
   /** Floor arrows near Pepper: one to the dog door, one warning where the dog catcher is. */
-  private arrows: Record<'door' | 'catcher', THREE.Mesh>;
+  private arrows: Record<'door' | 'catcher' | 'shepherd', THREE.Mesh>;
   private camX = 0;
   private camY = 0;
   private view = 150;
@@ -102,7 +104,8 @@ export class World3D {
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
     this.sun.shadow.bias = -0.0004;
-    this.scene.add(this.sun, this.sun.target, this.root, this.dog.root, this.catcher.root);
+    this.scene.add(this.sun, this.sun.target, this.root, this.dog.root, this.catcher.root, this.shepherd.root);
+    this.shepherd.root.visible = false;
 
     const arrow = (color: string) => {
       const shape = new THREE.Shape([new THREE.Vector2(1, 0), new THREE.Vector2(-0.6, 0.8), new THREE.Vector2(-0.6, -0.8)]);
@@ -121,7 +124,7 @@ export class World3D {
       this.scene.add(m);
       return m;
     };
-    this.arrows = { door: arrow(PAL.mustard), catcher: arrow(PAL.collar) };
+    this.arrows = { door: arrow(PAL.mustard), catcher: arrow(PAL.collar), shepherd: arrow(PAL.aussieRed) };
 
     this.resize();
     window.addEventListener('resize', () => this.resize());
@@ -454,7 +457,7 @@ export class World3D {
     this.anims.push({ t: 0, dur: 1.3, step: (k) => { this.flapAngle = 1.25 * Math.sin(Math.min(1, k * 1.6) * Math.PI * 0.5) * (k < 0.7 ? 1 : (1 - k) / 0.3); } });
   }
 
-  setArrow(which: 'door' | 'catcher', show: boolean, x = 0, y = 0, angle = 0, size = 1, height = 1) {
+  setArrow(which: 'door' | 'catcher' | 'shepherd', show: boolean, x = 0, y = 0, angle = 0, size = 1, height = 1) {
     const a = this.arrows[which];
     a.visible = show;
     if (!show) return;

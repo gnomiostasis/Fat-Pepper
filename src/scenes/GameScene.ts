@@ -13,6 +13,7 @@ import {
 import {
   CATCHER_EAT_R, CATCHER_R, CATCHER_RAD, catcherNet, CATCHER_SIZE, CATCHER_SPEED, DOOR_R, EAT_RATIO, GROW_K, HOUSE_BITE, ISLAND_R, OCEAN_R, SPACE_R, START_R, STREET_R, TOWN_R, WALL_R, WIN_R,
   canHop, fatFor, formatSize, grownRadius, OUTDOOR_ZOOM, speedFor, viewFor,
+  SHEP_DELAY, SHEP_FLEE_PACE, SHEP_GROW, SHEP_OUTGROW, SHEP_PACE, SHEP_PANT_T, SHEP_POUNCE, SHEP_POUNCE_COOL, SHEP_POUNCE_T, SHEP_START,
 } from '../game/tuning';
 import { ITEMS } from '../art/items';
 import { Placed, World3D, getWorld } from '../world3d/World3D';
@@ -89,6 +90,36 @@ interface Catcher {
   stun: number;
 }
 
+/** The fat red Australian Shepherd, who chases Pepper after the dog catcher, trying to eat her. */
+interface Shepherd {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  /** His radius: he starts out much bigger than Pepper and keeps growing. */
+  r: number;
+  heading: number;
+  gait: number;
+  /** Seconds left in his pounce, until he can pounce again, and of panting after one. */
+  pounce: number;
+  cool: number;
+  pant: number;
+  detour: number;
+  detourAng: number;
+  checkT: number;
+  lastX: number;
+  lastY: number;
+  /** Pepper has outgrown him: he tucks his bobtail and runs for it. */
+  scared: boolean;
+  /** 0..1, how wide his jaws are. */
+  chomp: number;
+  /** Seconds left of barking where he stands when he first spots her, before he gives chase. */
+  bark: number;
+  /** Seconds since Pepper ate him, or -1. */
+  eatenT: number;
+  t: number;
+}
+
 /** The slowest anything in the house slides when Pepper leans on it, as a share of her pace. */
 const PUSH_MIN = 0.1;
 
@@ -116,6 +147,17 @@ export class GameScene extends Phaser.Scene {
   private catcher: Catcher | null = null;
   /** Pepper ate the dog catcher, so he's gone for good. */
   private catcherEaten = false;
+  private shepherd: Shepherd | null = null;
+  /** Seconds until the Aussie shows up, once the dog catcher is dealt with. */
+  private shepWait = SHEP_DELAY;
+  /** Pepper ate the Aussie, so the chase is over for good. */
+  private shepherdEaten = false;
+  /** How big Pepper was when he showed up, where the goal bar starts. */
+  private shepSpawnR = 0;
+  /** Seconds until the goal bar next catches up with how big he's grown. */
+  private shepGoalT = 0;
+  /** Seconds since the Aussie gobbled Pepper up, or -1. */
+  private gulpedT = -1;
   private houses: House[] = [];
   /**
    * Walls Pepper can eat a piece at a time, by index into [...level.walls, ...level.counters]. Outdoors that's
@@ -206,6 +248,7 @@ export class GameScene extends Phaser.Scene {
     this.started = false; this.waking = false; this.finished = false; this.endStats = null; this.endR = 0; this.eatenCount = 0; this.tooSmallUntil = 0;
     this.outside = false; this.seen = new Set(['house']); this.houseGone = false;
     this.catcher = null; this.catcherEaten = false; this.zoom = 1;
+    this.shepherd = null; this.shepWait = SHEP_DELAY; this.shepherdEaten = false; this.gulpedT = -1;
     this.houses = []; this.housesEaten = 0; this.hoodsEaten = 0; this.townsEaten = 0; this.citiesEaten = 0; this.islesEaten = 0; this.mainlandEaten = 0; this.topEaten = false;
     // One free pick as soon as the run starts.
     this.stacks = {}; this.credited.clear(); this.pendingPicks = 1; this.picking = false;
@@ -214,6 +257,7 @@ export class GameScene extends Phaser.Scene {
     // The level is drawn in 3D underneath; this scene keeps the rules and the comic pops.
     this.world = getWorld();
     this.world.catcher.show(false);
+    this.world.shepherd.root.visible = false;
     this.loadWorld(buildWorld());
     this.heading = -Math.PI / 2;
 
@@ -319,6 +363,9 @@ export class GameScene extends Phaser.Scene {
     if (!this.outside) goal = { from: START_R, to: DOOR_R, label: 'Dog door at', reached: 'Dog door: OPEN!' };
     else if (!this.catcher && !this.catcherEaten) goal = { from: DOOR_R, to: CATCHER_R, label: 'Dog catcher alert at', reached: 'The dog catcher is coming!' };
     else if (!this.catcherEaten) goal = { from: CATCHER_R, to: this.catcherEatR(), label: 'Eat the catcher at', reached: 'Eat the dog catcher!' };
+    else if (!this.shepherdEaten && !this.shepherd) goal = { from: 0, to: 1, label: '', reached: 'Something big is coming...' };
+    else if (!this.shepherdEaten && !this.shepherd!.scared) goal = { from: this.shepSpawnR, to: this.shepherd!.r * SHEP_OUTGROW, label: 'Outgrow the Aussie at', reached: 'Pepper outgrew the Aussie!' };
+    else if (!this.shepherdEaten) goal = { from: 0, to: 1, label: '', reached: 'Catch and eat the Aussie!' };
     else if (this.r < houseR && this.housesEaten === 0) goal = { from: this.catcherEatR(), to: houseR, label: 'Eat houses at', reached: 'Houses are on the menu!' };
     else if (this.r < hoodR && this.hoodsEaten === 0) goal = { from: Math.min(houseR, this.r), to: hoodR, label: 'Eat neighborhoods at', reached: 'Neighborhoods are on the menu!' };
     else if (this.r < townR && this.townsEaten === 0) goal = { from: Math.min(hoodR, this.r), to: townR, label: 'Eat towns at', reached: 'Whole towns are on the menu!' };
@@ -471,6 +518,8 @@ export class GameScene extends Phaser.Scene {
     // Once he's been gulped down and shrunk away, the dog catcher is gone for good.
     if (this.catcher && this.catcher.eatenT >= 0.35) { this.catcher = null; this.world.catcher.show(false); }
     this.renderCatcher(dt);
+    if (this.shepherd && this.shepherd.eatenT >= 0.35) { this.shepherd = null; this.world.shepherd.root.visible = false; }
+    this.renderShepherd(dt);
     this.drawDoorArrow();
     this.zoom += ((this.outside ? OUTDOOR_ZOOM : 1) - this.zoom) * (1 - Math.exp(-dt * 2));
     this.world.follow(this.x, this.y, this.viewCm(), dt);
@@ -530,6 +579,7 @@ export class GameScene extends Phaser.Scene {
     this.pullSnacks(dt);
     this.eatNearby();
     this.stepCatcher(dt);
+    this.stepShepherd(dt);
 
     const v = Math.hypot(this.vx, this.vy);
     if (this.pushing && (this.wantX || this.wantY)) this.heading = Phaser.Math.Angle.RotateTo(this.heading, Math.atan2(this.wantY, this.wantX), dt * 8);
@@ -1293,6 +1343,167 @@ export class GameScene extends Phaser.Scene {
     this.world.setArrow('catcher', true, this.x + Math.cos(a) * dist, this.y + Math.sin(a) * dist, a, this.shownR * 0.5, this.shownR * 2.2);
   }
 
+  // ---------- the big red Aussie ----------
+
+  /** He comes bounding in from a street corner well off screen, already much bigger than Pepper. */
+  private spawnShepherd() {
+    const spots = this.level.catcherSpawns ?? [[this.level.bounds.x, this.level.bounds.y]];
+    // Off screen, so she has a head start: the corner nearest 1.4 screens away, and never closer than one screen.
+    const view = this.viewCm(), dist = (p: Pt) => Math.hypot(p[0] - this.x, p[1] - this.y);
+    const score = (p: Pt) => Math.abs(dist(p) - view * 1.4) + (dist(p) < view ? 1e9 - dist(p) : 0);
+    const [x, y] = [...spots].sort((a, b) => score(a) - score(b))[0];
+    this.shepherd = {
+      x, y, vx: 0, vy: 0, r: this.r * SHEP_START, heading: Math.atan2(this.y - y, this.x - x), gait: 0,
+      pounce: 0, cool: 2, pant: 0, detour: 0, detourAng: 0, checkT: 0, lastX: x, lastY: y, scared: false, chomp: 0, bark: 2, eatenT: -1, t: 0,
+    };
+    this.shepSpawnR = this.r;
+    this.world.shepherd.root.visible = true;
+    this.emitGoal();
+    this.game.events.emit(EV.toast, `RUN! A big fat red Aussie wants to eat Pepper! Outrun him and keep eating until she's bigger than him.`);
+  }
+
+  private stepShepherd(dt: number) {
+    if (!this.outside || !this.catcherEaten || this.shepherdEaten || this.finished) return;
+    if (!this.shepherd) {
+      // The dog catcher has to be all gone first, then a short breather.
+      if (this.catcher) return;
+      this.shepWait -= dt;
+      if (this.shepWait <= 0) this.spawnShepherd();
+      return;
+    }
+    const h = this.shepherd;
+    if (h.eatenT >= 0) return;
+    h.t += dt;
+
+    // He keeps getting bigger, and gobbles up anything loose he runs over.
+    if (!h.scared) {
+      h.r = Math.sqrt(h.r * h.r + SHEP_GROW * dt);
+      for (const t of this.grid.near(h.x, h.y, h.r)) {
+        if (t.eaten || t.def.size > h.r * EAT_RATIO) continue;
+        if ((t.box ? circleBoxDist(h.x, h.y, t.box) : Math.hypot(t.x - h.x, t.y - h.y)) > h.r * 0.9) continue;
+        t.eaten = true;
+        this.grid.remove(t);
+        if (t.box) this.solidGrid.remove(t.box);
+        // Only a third as filling for him as for Pepper: he wolfs it down without chewing.
+        h.r = Math.sqrt(h.r * h.r + 0.35 * GROW_K * (t.def.size / 2) ** 2);
+        h.chomp = 1;
+        this.world.eat(t, h.x + Math.cos(h.heading) * h.r * 1.4, h.y + Math.sin(h.heading) * h.r * 1.4, h.r);
+      }
+    }
+
+    // Outgrown: he tucks his bobtail and runs for it.
+    if (!h.scared && this.r >= h.r * SHEP_OUTGROW) {
+      h.scared = true; h.pounce = 0; h.pant = 0;
+      this.game.events.emit(EV.toast, 'Pepper outgrew the Aussie! Now he\'s the snack. Catch him!');
+      this.emitGoal();
+    }
+    if (!h.scared && (this.shepGoalT -= dt) <= 0) { this.shepGoalT = 0.4; this.emitGoal(); }
+
+    const dx = this.x - h.x, dy = this.y - h.y, d = Math.hypot(dx, dy) || 1;
+    let ang = Math.atan2(dy, dx) + (h.scared ? Math.PI : 0);
+    if (h.detour > 0) { h.detour -= dt; ang += h.detourAng; }
+
+    // About as quick as Pepper, but not quite (Zoomies and Sugar Rush help her get away). He pounces when
+    // he's close, then has to stop and pant for a moment: he is very fat.
+    const pace = speedFor(this.r);
+    let speed = pace * (h.scared ? SHEP_FLEE_PACE : SHEP_PACE);
+    if (h.bark > 0 && !h.scared) {
+      // First he plants his feet and barks at her, which gives her a moment to get going.
+      h.bark -= dt; speed = 0;
+      h.heading = Phaser.Math.Angle.RotateTo(h.heading, Math.atan2(dy, dx), dt * 8);
+      if (Math.sin(h.t * 14) > 0.3) h.chomp = 0.8;
+    }
+    h.cool -= dt;
+    if (!h.scared && h.bark <= 0 && h.pounce <= 0 && h.cool <= 0 && d < this.r + h.r * 1.5) {
+      h.pounce = SHEP_POUNCE_T; h.cool = SHEP_POUNCE_COOL;
+    }
+    if (h.pounce > 0) {
+      h.pounce -= dt; speed *= SHEP_POUNCE; h.chomp = 1;
+      if (h.pounce <= 0) h.pant = SHEP_PANT_T;
+    } else if (h.pant > 0) { h.pant -= dt; speed *= 0.35; }
+    const a = 1 - Math.exp(-dt * (h.pounce > 0 ? 14 : 6));
+    h.vx += (Math.cos(ang) * speed - h.vx) * a;
+    h.vy += (Math.sin(ang) * speed - h.vy) * a;
+    h.x += h.vx * dt; h.y += h.vy * dt;
+    // He's fat but squishy: he squeezes down streets and through gaps about half his width.
+    const rad = h.r * 0.5;
+    this.pushOut(h, rad);
+    const b = this.level.bounds;
+    h.x = Phaser.Math.Clamp(h.x, b.x + rad, b.x + b.w - rad);
+    h.y = Phaser.Math.Clamp(h.y, b.y + rad, b.y + b.h - rad);
+
+    h.checkT += dt;
+    if (h.checkT > 0.6) {
+      if (Math.hypot(h.x - h.lastX, h.y - h.lastY) < speed * 0.6 * 0.3 && h.detour <= 0 && h.pant <= 0) {
+        h.detour = 0.9; h.detourAng = (Math.random() < 0.5 ? -1 : 1) * Math.PI / 2;
+      }
+      h.checkT = 0; h.lastX = h.x; h.lastY = h.y;
+    }
+    const v = Math.hypot(h.vx, h.vy);
+    if (v > 10) h.heading = Phaser.Math.Angle.RotateTo(h.heading, Math.atan2(h.vy, h.vx), dt * 9);
+    h.gait += (v / h.r) * dt * 1.4;
+
+    if (h.scared) {
+      if (d < this.r + h.r * 0.8) this.eatShepherd();
+    } else if (d < this.r * 0.7 + h.r * 0.65) {
+      this.getGobbled();
+    }
+  }
+
+  /** The Aussie catches Pepper and gulps her down. */
+  private getGobbled() {
+    const h = this.shepherd!;
+    h.chomp = 1; h.pounce = 0;
+    this.vx = this.vy = 0;
+    this.gulpedT = 0;
+    this.world.setArrow('shepherd', false);
+    this.game.events.emit(EV.toast, 'CHOMP! The big red Aussie gobbled Pepper up.');
+    this.endRun('eaten');
+  }
+
+  /** Pepper gulps the Aussie down, bobtail and all. */
+  private eatShepherd() {
+    const h = this.shepherd!;
+    h.eatenT = 0;
+    this.shepherdEaten = true;
+    this.world.setArrow('shepherd', false);
+    const before = this.r;
+    // A dog-sized dog is a big meal: worth a good share of his body.
+    this.grow(GROW_K * h.r * h.r * 1.5);
+    this.game.events.emit(EV.eat, 'the big red Aussie');
+    const [sx, sy] = this.world.toScreen(h.x, h.y, h.r), ppc = this.world.pxPerCm();
+    this.crumbBurst(sx, sy, this.r * ppc);
+    this.lastPop = 0;
+    this.chompPop(sx, sy, this.r * ppc);
+    this.game.events.emit(EV.toast, `Pepper ate the big red Aussie! Top dog. Houses are on the menu at ${formatSize(this.houseEatR())}.`);
+    this.afterGrow(before);
+  }
+
+  private renderShepherd(dt: number) {
+    const h = this.shepherd;
+    if (!h) { this.world.setArrow('shepherd', false); return; }
+    h.chomp *= Math.exp(-dt * (h.pounce > 0 || this.gulpedT >= 0 ? 1 : 6));
+    const v = Math.hypot(h.vx, h.vy), moving = Math.min(1, v / Math.max(1, speedFor(this.r) * SHEP_PACE));
+    // Scared, his bobtail goes still and tucked; chasing, it wiggles his whole rump.
+    const wag = h.scared ? -0.6 : Math.sin(h.t * 11) * 0.5;
+    // Barking, his jaws snap open and shut instead of easing.
+    if (h.bark > 0) h.chomp = Math.sin(h.t * 14) > 0.3 ? 0.8 : 0;
+    const pant = h.pant > 0 ? 0.35 + Math.sin(h.t * 30) * 0.25 : 0;
+    this.world.shepherd.pose({
+      x: h.x, y: h.y, heading: h.heading, r: h.r, fat: 1, moving, gait: h.gait, wag,
+      chomp: Math.max(h.chomp, pant), lunge: h.pounce > 0 ? h.r * 0.15 : 0,
+    });
+    const scale = h.eatenT >= 0 ? Math.max(0.001, 1 - Math.min(1, (h.eatenT += dt) / 0.3)) : 1;
+    this.world.shepherd.root.scale.setScalar(scale);
+
+    // A red arrow over Pepper's head points to him while he's off screen.
+    const d = Math.hypot(h.x - this.x, h.y - this.y);
+    const show = !this.finished && h.eatenT < 0 && d > this.viewCm() * 0.45;
+    if (!show) { this.world.setArrow('shepherd', false); return; }
+    const a = Math.atan2(h.y - this.y, h.x - this.x), dist = this.shownR * 2.6;
+    this.world.setArrow('shepherd', true, this.x + Math.cos(a) * dist, this.y + Math.sin(a) * dist, a, this.shownR * 0.5, this.shownR * 2.2);
+  }
+
   // ---------- drawing Pepper ----------
 
   private renderDog(dt: number) {
@@ -1311,8 +1522,17 @@ export class GameScene extends Phaser.Scene {
     const now = this.time.now / 1000, gait = this.walkPhase * 0.6;
     const wag = Math.sin(gait * 2) * 0.45 * moving + Math.sin(now * 7) * (0.3 + this.happy * 0.5) * (1 - moving * 0.6);
 
+    // Gobbled up: she shrinks away into the Aussie's mouth.
+    let px = this.x, py = this.y, pr = this.shownR;
+    const h = this.shepherd;
+    if (this.gulpedT >= 0 && h) {
+      this.gulpedT += dt;
+      const k = Math.min(1, this.gulpedT / 0.35);
+      const mx = h.x + Math.cos(h.heading) * h.r * 1.2, my = h.y + Math.sin(h.heading) * h.r * 1.2;
+      px += (mx - px) * k; py += (my - py) * k; pr = Math.max(0.001, pr * (1 - k));
+    }
     this.world.posePepper({
-      x: this.x, y: this.y, heading: this.heading, r: this.shownR, fat: fatFor(this.shownR),
+      x: px, y: py, heading: this.heading, r: pr, fat: fatFor(this.shownR),
       moving, gait, wag, chomp: this.chomp, lunge,
     });
   }

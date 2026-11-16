@@ -36,6 +36,20 @@ export interface DogPose {
   breath?: number;
 }
 
+/** A dog's colouring: Pepper's black and white, or the big red Aussie's. */
+export interface Coat {
+  base: string;
+  white: string;
+  collar: string;
+  tag: string;
+  /** Copper dots over the eyes and on the cheeks (a red tri Aussie has them). */
+  points?: string;
+  /** How long the tail is, as a share of Pepper's; an Aussie's is a short bob. */
+  tail?: number;
+}
+
+export const PEPPER_COAT: Coat = { base: PAL.dogBlack, white: PAL.dogWhite, collar: PAL.collar, tag: PAL.tag };
+
 /**
  * Pepper, a black-and-white border collie, built from rounded shapes. She faces
  * +x in her own space and is about one unit long, with her body centre at x=0.
@@ -54,27 +68,32 @@ export class Dog3D {
     blending: THREE.CustomBlending, blendSrc: THREE.SrcAlphaFactor, blendDst: THREE.OneMinusSrcAlphaFactor,
   });
 
-  constructor() {
+  constructor(coat: Coat = PEPPER_COAT) {
+    const B = coat.base, W = coat.white, tl = coat.tail ?? 1;
     this.root.add(this.body);
     this.body.add(this.torso, this.head, this.collar, this.tail);
     this.torso.position.y = 0.45;
 
     this.part(this.torso, (b) => b
-      .ball(0, 0, 0, 0.5, PAL.dogBlack, { sy: 0.62, sz: 0.66 })
-      // White neck and shoulders, and the small patch on her lower back
-      .ball(0.3, 0.04, 0, 0.33, PAL.dogWhite, { sx: 0.8, sy: 0.95, sz: 1.03 })
-      .ball(-0.27, 0.285, 0, 0.11, PAL.dogWhite, { sx: 1.1, sy: 0.3, ink: false }));
+      .ball(0, 0, 0, 0.5, B, { sy: 0.62, sz: 0.66 })
+      // White neck and shoulders, and the small patch on her lower back (Pepper's, not the Aussie's)
+      .ball(0.3, 0.04, 0, 0.33, W, { sx: 0.8, sy: 0.95, sz: 1.03 })
+      .ball(-0.27, 0.285, 0, 0.11, coat.points ? B : W, { sx: 1.1, sy: 0.3, ink: false }));
 
     this.head.position.set(0.6, 0.74, 0);
     this.part(this.head, (b) => {
-      b.ball(0, 0, 0, 0.26, PAL.dogBlack, { sx: 1.1, sy: 0.95, sz: 0.95 })
-        .ball(0.12, 0.2, 0, 0.08, PAL.dogWhite, { sx: 2.2, sy: 0.5, sz: 0.55, ink: false })
-        .ball(0.24, -0.07, 0, 0.15, PAL.dogWhite, { sx: 1.25, sy: 0.85, sz: 0.95 })
+      b.ball(0, 0, 0, 0.26, B, { sx: 1.1, sy: 0.95, sz: 0.95 })
+        .ball(0.12, 0.2, 0, 0.08, W, { sx: 2.2, sy: 0.5, sz: 0.55, ink: false })
+        .ball(0.24, -0.07, 0, 0.15, W, { sx: 1.25, sy: 0.85, sz: 0.95 })
         .ball(0.43, -0.02, 0, 0.045, PAL.ink);
       for (const s of [-1, 1]) {
         b.ball(0.17, 0.08, 0.13 * s, 0.036, PAL.white, { ink: false })
           .ball(0.195, 0.085, 0.145 * s, 0.022, PAL.ink, { ink: false })
-          .coneAt(-0.05, 0.25, 0.14 * s, 0.085, 0.2, PAL.dogBlack, { sz: 0.6, rx: 0.35 * s, rz: -0.25 });
+          .coneAt(-0.05, 0.25, 0.14 * s, 0.085, 0.2, B, { sz: 0.6, rx: 0.35 * s, rz: -0.25 });
+        if (coat.points) {
+          b.ball(0.2, 0.15, 0.12 * s, 0.03, coat.points, { sx: 1.3, sy: 0.6, ink: false })
+              .ball(0.12, -0.03, 0.17 * s, 0.045, coat.points, { sx: 1.2, sy: 0.8, ink: false });
+        }
       }
     });
     // Eyelids: a dab of black fur over each eye, squashed flat while her eyes are open.
@@ -82,30 +101,30 @@ export class Dog3D {
       const lid = new THREE.Group();
       lid.position.set(0.178, 0.083, 0.14 * s);
       this.head.add(lid);
-      this.part(lid, (b) => b.ball(0, 0, 0, 0.042, PAL.dogBlack, { ink: false }));
+      this.part(lid, (b) => b.ball(0, 0, 0, 0.042, B, { ink: false }));
       lid.scale.setScalar(0.001);
       this.lids.push(lid);
     }
 
     this.collar.position.set(0.43, 0.62, 0);
     this.part(this.collar, (b) => b
-      .ring(0, 0, 0, 0.2, 0.04, PAL.collar, { rz: Math.PI / 2 })
-      .ball(0.06, -0.2, 0, 0.045, PAL.tag));
+      .ring(0, 0, 0, 0.2, 0.04, coat.collar, { rz: Math.PI / 2 })
+      .ball(0.06, -0.2, 0, 0.045, coat.tag));
 
     for (const [x, z, ph] of [[0.3, 0.19, 0], [0.3, -0.19, Math.PI], [-0.3, 0.19, Math.PI], [-0.3, -0.19, 0]]) {
       const pivot = new THREE.Group();
       pivot.position.set(x, 0.42, z);
       this.body.add(pivot);
       this.part(pivot, (b) => b
-        .cyl(0, 0, 0.075, -0.36, 0.36, PAL.dogBlack)
-        .ball(0.02, -0.36, 0, 0.1, PAL.dogWhite, { sx: 1.3, sy: 0.6 }));
+        .cyl(0, 0, 0.075, -0.36, 0.36, B)
+        .ball(0.02, -0.36, 0, 0.1, W, { sx: 1.3, sy: 0.6 }));
       this.legs.push({ pivot, x, z, ph });
     }
 
     this.tail.position.set(-0.48, 0.58, 0);
     this.part(this.tail, (b) => b
-      .rod(-0.21, 0, 0, 0.065, 0.42, 'x', PAL.dogBlack)
-      .ball(-0.44, 0, 0, 0.075, PAL.dogWhite, { sx: 1.3 }));
+      .rod(-0.21 * tl, 0, 0, 0.065, 0.42 * tl, 'x', B)
+      .ball(-0.44 * tl, 0, 0, 0.075, tl < 1 ? B : W, { sx: 1.3 }));
   }
 
   /** Adds one painted, inked part, plus its see-through copy for when furniture hides her. */
